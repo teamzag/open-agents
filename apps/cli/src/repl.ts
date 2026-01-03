@@ -1,6 +1,9 @@
 import * as readline from "readline";
-import { deepAgent } from "../agent";
-import type { TodoItem, ScratchpadEntry } from "../agent";
+import {
+  deepAgent,
+  type TodoItem,
+  type ScratchpadEntry,
+} from "@open-claude-code/agent";
 import { printStream } from "./utils/print-stream";
 
 export interface ReplOptions {

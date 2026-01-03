@@ -18,7 +18,7 @@ import type {
   TUIAgentUIMessage,
   AutoAcceptMode,
 } from "./types.js";
-import { getContextLimit } from "../agent/utils/model-context-limits.js";
+import { getContextLimit } from "@open-claude-code/agent";
 
 type ChatState = {
   model?: string;

@@ -1,0 +1,31 @@
+{
+  "name": "@open-claude-code/tui",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "exports": {
+    ".": "./src/index.tsx"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@open-claude-code/agent": "workspace:*",
+    "@ai-sdk/react": "^3.0.3",
+    "ai": "^6.0.3",
+    "chalk": "^5.4.1",
+    "cli-highlight": "^2.1.11",
+    "ink": "^6.6.0",
+    "ink-spinner": "^5.0.0",
+    "ink-text-input": "^6.0.0",
+    "marked": "^17.0.1",
+    "react": "^19.2.3"
+  },
+  "devDependencies": {
+    "@open-claude-code/typescript-config": "workspace:*",
+    "@types/bun": "latest",
+    "@types/node": "^22",
+    "@types/react": "^19.2.7",
+    "typescript": "^5"
+  }
+}

@@ -1,5 +1,9 @@
-import { deepAgent, deepAgentModelId } from "../agent/deep-agent";
-import type { ScratchpadEntry, TodoItem } from "../agent/types";
+import {
+  deepAgent,
+  deepAgentModelId,
+  type ScratchpadEntry,
+  type TodoItem,
+} from "@open-claude-code/agent";
 
 // Configure your agent here - this is the single source of truth for the TUI
 export const tuiAgent = deepAgent;

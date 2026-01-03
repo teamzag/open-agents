@@ -1,4 +1,5 @@
 {
+  "$schema": "https://json.schemastore.org/tsconfig",
   "compilerOptions": {
     "lib": ["ESNext"],
     "target": "ESNext",
@@ -23,7 +24,5 @@
     "noPropertyAccessFromIndexSignature": false,
 
     "types": ["bun", "node"]
-  },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules"]
+  }
 }

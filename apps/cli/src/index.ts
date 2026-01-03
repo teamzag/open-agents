@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { createTUI } from "../tui/index.js";
+import { createTUI } from "@open-claude-code/tui";
 
 async function main() {
   const args = process.argv.slice(2);
