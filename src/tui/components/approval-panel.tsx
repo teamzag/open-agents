@@ -2,6 +2,8 @@ import React, { useState, useEffect } from "react";
 import { Box, Text, useInput } from "ink";
 import { useChat } from "@ai-sdk/react";
 import { useChatContext } from "../chat-context.js";
+import { addSessionRule } from "../../agent/utils/shared-context.js";
+import type { RuleCandidate } from "./tool-call.js";
 
 export type ApprovalPanelProps = {
   approvalId: string;
@@ -9,6 +11,7 @@ export type ApprovalPanelProps = {
   toolCommand: string;
   toolDescription?: string;
   dontAskAgainPattern?: string;
+  ruleCandidate?: RuleCandidate;
 };
 
 export function ApprovalPanel({
@@ -17,11 +20,15 @@ export function ApprovalPanel({
   toolCommand,
   toolDescription,
   dontAskAgainPattern,
+  ruleCandidate,
 }: ApprovalPanelProps) {
   const { chat } = useChatContext();
   const { addToolApprovalResponse } = useChat({ chat });
   const [selected, setSelected] = useState(0);
   const [reason, setReason] = useState("");
+  const hasRuleCandidate = Boolean(ruleCandidate);
+  const maxIndex = hasRuleCandidate ? 2 : 1;
+  const reasonIndex = hasRuleCandidate ? 2 : 1;
 
   // Reset state when approval request changes
   useEffect(() => {
@@ -36,8 +43,8 @@ export function ApprovalPanel({
       return;
     }
 
-    // When on the text input option (selected === 2)
-    if (selected === 2) {
+    // When on the text input option
+    if (selected === reasonIndex) {
       if (key.return) {
         addToolApprovalResponse({
           id: approvalId,
@@ -47,7 +54,7 @@ export function ApprovalPanel({
       } else if (key.backspace || key.delete) {
         setReason((prev) => prev.slice(0, -1));
       } else if (key.upArrow || (key.ctrl && input === "p")) {
-        setSelected(1);
+        setSelected(hasRuleCandidate ? 1 : 0);
       } else if (input && !key.ctrl && !key.meta && !key.return) {
         setReason((prev) => prev + input);
       }
@@ -59,17 +66,18 @@ export function ApprovalPanel({
       key.downArrow || input === "j" || (key.ctrl && input === "n");
 
     if (goUp) {
-      setSelected((prev) => (prev === 0 ? 2 : prev - 1));
+      setSelected((prev) => (prev === 0 ? maxIndex : prev - 1));
     }
     if (goDown) {
-      setSelected((prev) => (prev === 2 ? 0 : prev + 1));
+      setSelected((prev) => (prev === maxIndex ? 0 : prev + 1));
     }
     if (key.return) {
       if (selected === 0) {
         // Yes
         addToolApprovalResponse({ id: approvalId, approved: true });
-      } else if (selected === 1) {
-        // Yes, and don't ask again (placeholder - behaves as Yes for now)
+      } else if (hasRuleCandidate && selected === 1 && ruleCandidate) {
+        // Yes, and don't ask again - store the rule for future auto-approval
+        addSessionRule(ruleCandidate.rule);
         addToolApprovalResponse({ id: approvalId, approved: true });
       }
     }
@@ -109,20 +117,24 @@ export function ApprovalPanel({
           </Text>
 
           {/* Option 2: Yes, and don't ask again */}
-          <Text>
-            <Text color="yellow">{selected === 1 ? "› " : "  "}</Text>
-            <Text>2. Yes, and don't ask again for </Text>
-            <Text bold>{dontAskAgainPattern}</Text>
-          </Text>
+          {hasRuleCandidate && (
+            <Text>
+              <Text color="yellow">{selected === 1 ? "› " : "  "}</Text>
+              <Text>2. Yes, and don't ask again for </Text>
+              <Text bold>{ruleCandidate?.displayLabel ?? dontAskAgainPattern}</Text>
+            </Text>
+          )}
 
           {/* Option 3: Inline text input */}
           <Box>
-            <Text color="yellow">{selected === 2 ? "› " : "  "}</Text>
-            <Text>3. </Text>
-            {reason || selected === 2 ? (
+            <Text color="yellow">
+              {selected === reasonIndex ? "› " : "  "}
+            </Text>
+            <Text>{hasRuleCandidate ? "3. " : "2. "}</Text>
+            {reason || selected === reasonIndex ? (
               <>
                 <Text>{reason}</Text>
-                {selected === 2 && <Text color="gray">█</Text>}
+                {selected === reasonIndex && <Text color="gray">█</Text>}
               </>
             ) : (
               <Text color="gray">Type here to tell Claude what to do differently</Text>
@@ -134,7 +146,7 @@ export function ApprovalPanel({
       {/* Footer hint */}
       <Box marginTop={1}>
         <Text color="gray">
-          {selected === 2 ? "Enter to submit, Esc to cancel" : "Esc to cancel"}
+          {selected === reasonIndex ? "Enter to submit, Esc to deny" : "Esc to deny"}
         </Text>
       </Box>
     </Box>
