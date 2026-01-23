@@ -10,22 +10,35 @@ export function ExitPlanModeRenderer({
   const isStreaming = part.state === "input-streaming";
   const dotColor = getDotColor(state);
 
-  // Check if plan was approved (tool executed successfully after approval)
-  const isApproved =
+  // Check if tool executed successfully
+  const isCompleted =
     part.state === "output-available" &&
     typeof part.output === "object" &&
     part.output !== null &&
     "success" in part.output &&
     part.output.success === true;
 
-  // Determine text based on state
-  const text = state.denied
-    ? "Plan rejected"
-    : isApproved
-      ? "Plan approved"
-      : "Plan complete. Requesting approval to proceed.";
+  // Check if there was an actual plan
+  const hasPlan =
+    isCompleted &&
+    "plan" in part.output &&
+    typeof part.output.plan === "string" &&
+    part.output.plan.trim().length > 0;
 
-  const textColor = state.denied ? "red" : isApproved ? "green" : "white";
+  // Determine text based on state
+  let text: string;
+  let textColor: string;
+
+  if (state.denied) {
+    text = "Plan rejected";
+    textColor = "red";
+  } else if (isCompleted) {
+    text = hasPlan ? "Plan approved" : "Exited plan mode";
+    textColor = "green";
+  } else {
+    text = "Plan complete. Requesting approval to proceed.";
+    textColor = "white";
+  }
 
   return (
     <Box flexDirection="column" marginTop={1} marginBottom={1}>
