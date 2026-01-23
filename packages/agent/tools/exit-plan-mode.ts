@@ -2,7 +2,9 @@ import { tool } from "ai";
 import { z } from "zod";
 import { getAgentContext } from "./utils";
 
+// Note: Need at least one property for Anthropic API compatibility
 const exitPlanModeInputSchema = z.object({
+  _: z.string().optional().describe("Unused placeholder for API compatibility"),
   allowedPrompts: z
     .array(
       z.object({

@@ -195,8 +195,15 @@ export const deepAgent = new ToolLoopAgent({
     }
 
     // Update active tools based on current mode
-    const activeToolNames =
+    // When forceExitPlanMode is true, explicitly include exit_plan_mode to ensure
+    // it's available even if there's any timing issue with mode detection
+    const baseActiveTools =
       agentMode === "plan" ? PLAN_MODE_TOOLS : DEFAULT_MODE_TOOLS;
+    const activeToolNames = forceExitPlanMode
+      ? ([...new Set([...baseActiveTools, "exit_plan_mode" as const])] as Array<
+          keyof typeof tools
+        >)
+      : ([...baseActiveTools] as Array<keyof typeof tools>);
 
     // Rebuild instructions if mode changed
     let instructions: string | undefined;
@@ -219,7 +226,7 @@ export const deepAgent = new ToolLoopAgent({
         messages: compactContext({ messages, steps }),
         model,
       }),
-      // activeTools: [...activeToolNames],
+      activeTools: [...activeToolNames],
       ...(forceExitPlanMode && {
         toolChoice: { type: "tool", toolName: "exit_plan_mode" },
       }),
@@ -257,9 +264,9 @@ export const deepAgent = new ToolLoopAgent({
       planFilePath,
     });
 
-    // Select which tools are active based on agent mode
-    const activeToolNames =
-      agentMode === "plan" ? PLAN_MODE_TOOLS : DEFAULT_MODE_TOOLS;
+    // Note: activeTools is NOT set here in prepareCall.
+    // It's set dynamically in prepareStep based on current agent mode.
+    // This ensures prepareStep has full control over tool filtering.
 
     return {
       ...settings,
@@ -268,7 +275,6 @@ export const deepAgent = new ToolLoopAgent({
         tools: settings.tools ?? tools,
         model: callModel,
       }),
-      // activeTools: [...activeToolNames],
       instructions,
       experimental_context: {
         sandbox,
