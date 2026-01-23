@@ -22,6 +22,7 @@ import { BashRenderer } from "../components/tool-renderers/bash-renderer";
 import { TodoRenderer } from "../components/tool-renderers/todo-renderer";
 import { TaskRenderer } from "../components/tool-renderers/task-renderer";
 import { AskUserQuestionRenderer } from "../components/tool-renderers/ask-user-question-renderer";
+import { EnterPlanModeRenderer } from "../components/tool-renderers/enter-plan-mode-renderer";
 import { ExitPlanModeRenderer } from "../components/tool-renderers/exit-plan-mode-renderer";
 import { DefaultRenderer } from "../components/tool-renderers/default-renderer";
 
@@ -93,7 +94,7 @@ export function renderToolPart(
         />
       );
     case "tool-enter_plan_mode":
-      return <DefaultRenderer part={part} state={state} />;
+      return <EnterPlanModeRenderer part={part} state={state} />;
     case "tool-exit_plan_mode":
       return <ExitPlanModeRenderer part={part} state={state} />;
     case "dynamic-tool":
