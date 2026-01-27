@@ -43,7 +43,9 @@ export function ApprovalPanel({
   const effectiveDescription = useMemo(() => {
     if (toolPart?.type === "tool-skill") {
       const skillName = String(toolPart.input?.skill ?? "");
-      const skill = state.skills.find((s) => s.name === skillName);
+      const skill = state.skills.find(
+        (s) => s.name.toLowerCase() === skillName.toLowerCase(),
+      );
       if (skill?.description) {
         return skill.description;
       }
