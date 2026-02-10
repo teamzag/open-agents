@@ -1,6 +1,8 @@
 import { connectSandbox } from "@open-harness/sandbox";
-import { generateText, gateway } from "ai";
+import { gateway, generateText } from "ai";
+import { getInstallationByAccountLogin } from "@/lib/db/installations";
 import { getSessionById, updateSession } from "@/lib/db/sessions";
+import { getInstallationToken } from "@/lib/github/app-auth";
 import { createRepository } from "@/lib/github/client";
 import { getUserGitHubToken } from "@/lib/github/user-token";
 import { isSandboxActive } from "@/lib/sandbox/utils";
@@ -18,6 +20,8 @@ interface CreateRepoRequest {
   description?: string;
   isPrivate?: boolean;
   sessionTitle: string;
+  /** The account login to create the repo under (org name or username) */
+  owner?: string;
 }
 
 export async function POST(req: Request) {
@@ -35,7 +39,8 @@ export async function POST(req: Request) {
     return Response.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const { sessionId, repoName, description, isPrivate, sessionTitle } = body;
+  const { sessionId, repoName, description, isPrivate, sessionTitle, owner } =
+    body;
 
   if (!sessionId) {
     return Response.json({ error: "Session ID is required" }, { status: 400 });
@@ -68,9 +73,50 @@ export async function POST(req: Request) {
     return Response.json({ error: "Sandbox not initialized" }, { status: 400 });
   }
 
-  // 4. Get GitHub token for git operations
-  const githubToken = await getUserGitHubToken();
-  if (!githubToken) {
+  // 4. Resolve GitHub token for repo creation
+  // For orgs: use installation token + createInOrg
+  // For personal accounts: use user OAuth token + createForAuthenticatedUser
+  // (POST /user/repos only works with user access tokens, not installation tokens)
+  let repoToken: string | null = null;
+  let installationToken: string | null = null;
+  let accountType: "User" | "Organization" | undefined;
+
+  if (owner) {
+    const installation = await getInstallationByAccountLogin(
+      session.user.id,
+      owner,
+    );
+    if (!installation) {
+      return Response.json(
+        {
+          error: `No GitHub App installation found for "${owner}". Install the GitHub App on that account first.`,
+        },
+        { status: 400 },
+      );
+    }
+
+    accountType = installation.accountType;
+
+    try {
+      installationToken = await getInstallationToken(
+        installation.installationId,
+      );
+    } catch (error) {
+      console.error(`Failed to get installation token for ${owner}:`, error);
+    }
+
+    // Only use installation token for org repos (createInOrg)
+    if (installation.accountType === "Organization" && installationToken) {
+      repoToken = installationToken;
+    }
+  }
+
+  // Use user OAuth token for personal accounts (or as fallback)
+  if (!repoToken) {
+    repoToken = await getUserGitHubToken();
+  }
+
+  if (!repoToken) {
     return Response.json({ error: "GitHub not connected" }, { status: 401 });
   }
 
@@ -95,6 +141,9 @@ export async function POST(req: Request) {
     name: repoName,
     description,
     isPrivate,
+    token: repoToken,
+    owner,
+    accountType,
   });
 
   if (!repoResult.success) {
@@ -163,9 +212,16 @@ export async function POST(req: Request) {
     );
   }
 
+  // For orgs, use installation token for push (has Contents write permission).
+  // For personal accounts, use the same OAuth token that created the repo —
+  // the installation token may not have access if repositorySelection is "selected".
+  const pushToken =
+    accountType === "Organization" && installationToken
+      ? installationToken
+      : repoToken;
   const authUrl = repoResult.cloneUrl.replace(
     "https://",
-    `https://${githubToken}@`,
+    `https://x-access-token:${pushToken}@`,
   );
   const addRemoteResult = await sandbox.exec(
     `git remote add origin "${authUrl}"`,

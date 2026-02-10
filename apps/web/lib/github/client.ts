@@ -5,16 +5,16 @@ type OctokitResult =
   | { octokit: Octokit; authenticated: true }
   | { octokit: null; authenticated: false };
 
-export async function getOctokit(): Promise<OctokitResult> {
-  const userToken = await getUserGitHubToken();
+export async function getOctokit(token?: string): Promise<OctokitResult> {
+  const resolvedToken = token ?? (await getUserGitHubToken());
 
-  if (!userToken) {
+  if (!resolvedToken) {
     console.warn("No GitHub token - user needs to connect GitHub");
     return { octokit: null, authenticated: false };
   }
 
   return {
-    octokit: new Octokit({ auth: userToken }),
+    octokit: new Octokit({ auth: resolvedToken }),
     authenticated: true,
   };
 }
@@ -35,16 +35,24 @@ export async function createPullRequest(params: {
   title: string;
   body?: string;
   baseBranch?: string;
+  token?: string;
 }): Promise<{
   success: boolean;
   prUrl?: string;
   prNumber?: number;
   error?: string;
 }> {
-  const { repoUrl, branchName, title, body = "", baseBranch = "main" } = params;
+  const {
+    repoUrl,
+    branchName,
+    title,
+    body = "",
+    baseBranch = "main",
+    token,
+  } = params;
 
   try {
-    const result = await getOctokit();
+    const result = await getOctokit(token);
 
     if (!result.authenticated) {
       return { success: false, error: "GitHub account not connected" };
@@ -93,11 +101,12 @@ export async function mergePullRequest(params: {
   repoUrl: string;
   prNumber: number;
   mergeMethod?: "merge" | "squash" | "rebase";
+  token?: string;
 }): Promise<{ success: boolean; sha?: string; error?: string }> {
-  const { repoUrl, prNumber, mergeMethod = "squash" } = params;
+  const { repoUrl, prNumber, mergeMethod = "squash", token } = params;
 
   try {
-    const result = await getOctokit();
+    const result = await getOctokit(token);
 
     if (!result.authenticated) {
       return { success: false, error: "GitHub account not connected" };
@@ -139,15 +148,16 @@ export async function mergePullRequest(params: {
 export async function getPullRequestStatus(params: {
   repoUrl: string;
   prNumber: number;
+  token?: string;
 }): Promise<{
   success: boolean;
   status?: "open" | "closed" | "merged";
   error?: string;
 }> {
-  const { repoUrl, prNumber } = params;
+  const { repoUrl, prNumber, token } = params;
 
   try {
-    const result = await getOctokit();
+    const result = await getOctokit(token);
 
     if (!result.authenticated) {
       return { success: false, error: "GitHub account not connected" };
@@ -185,6 +195,11 @@ export async function createRepository(params: {
   name: string;
   description?: string;
   isPrivate?: boolean;
+  token?: string;
+  /** The account login to create the repo under (org name or username) */
+  owner?: string;
+  /** Whether the target owner is a User or Organization */
+  accountType?: "User" | "Organization";
 }): Promise<{
   success: boolean;
   repoUrl?: string;
@@ -193,10 +208,17 @@ export async function createRepository(params: {
   repoName?: string;
   error?: string;
 }> {
-  const { name, description = "", isPrivate = false } = params;
+  const {
+    name,
+    description = "",
+    isPrivate = false,
+    token,
+    owner,
+    accountType,
+  } = params;
 
   try {
-    const result = await getOctokit();
+    const result = await getOctokit(token);
 
     if (!result.authenticated) {
       return { success: false, error: "GitHub account not connected" };
@@ -211,14 +233,23 @@ export async function createRepository(params: {
       };
     }
 
-    const response = await result.octokit.rest.repos.createForAuthenticatedUser(
-      {
+    let response;
+    if (accountType === "Organization" && owner) {
+      response = await result.octokit.rest.repos.createInOrg({
+        org: owner,
         name,
         description,
         private: isPrivate,
-        auto_init: false, // Don't initialize with README - we'll push our content
-      },
-    );
+        auto_init: false,
+      });
+    } else {
+      response = await result.octokit.rest.repos.createForAuthenticatedUser({
+        name,
+        description,
+        private: isPrivate,
+        auto_init: false,
+      });
+    }
 
     return {
       success: true,
