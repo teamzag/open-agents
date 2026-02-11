@@ -18,14 +18,14 @@ const fakeDb = {
       insert: (table: unknown) => {
         values: (input: unknown) => {
           onConflictDoNothing: (config: unknown) => {
-            returning: () => Promise<typeof fakeInsertedMessage[]>;
+            returning: () => Promise<(typeof fakeInsertedMessage)[]>;
           };
         };
       };
       update: (table: unknown) => {
         set: (input: unknown) => {
           where: (condition: unknown) => {
-            returning: () => Promise<typeof fakeInsertedMessage[]>;
+            returning: () => Promise<(typeof fakeInsertedMessage)[]>;
           };
         };
       };

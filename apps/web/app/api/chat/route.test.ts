@@ -31,7 +31,11 @@ const getNanoId = () => {
 const sessionRecord = {
   id: "session-1",
   userId: "user-1",
-  sandboxState: { type: "vercel", sandboxId: "sbx-1", expiresAt: Date.now() + 60_000 },
+  sandboxState: {
+    type: "vercel",
+    sandboxId: "sbx-1",
+    expiresAt: Date.now() + 60_000,
+  },
   repoOwner: null,
   repoName: null,
 };
@@ -47,7 +51,8 @@ const compareAndSetCalls: Array<{
   expected: string | null;
   next: string | null;
 }> = [];
-const updateActiveCalls: Array<{ chatId: string; streamId: string | null }> = [];
+const updateActiveCalls: Array<{ chatId: string; streamId: string | null }> =
+  [];
 
 mock.module("@open-harness/agent", () => ({
   discoverSkills: async () => [],
@@ -209,7 +214,9 @@ describe("/api/chat ownership guards", () => {
           {
             id: "assistant-live",
             role: "assistant",
-            parts: [{ type: "tool-ask_user_question", state: "input-available" }],
+            parts: [
+              { type: "tool-ask_user_question", state: "input-available" },
+            ],
           },
         ],
       }),
@@ -237,7 +244,9 @@ describe("/api/chat ownership guards", () => {
           {
             id: "assistant-live",
             role: "assistant",
-            parts: [{ type: "tool-ask_user_question", state: "input-available" }],
+            parts: [
+              { type: "tool-ask_user_question", state: "input-available" },
+            ],
           },
         ],
       }),
