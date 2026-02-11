@@ -43,7 +43,9 @@ const sessionRecord = {
 let chatState: TestChat;
 let getChatByIdCallCount = 0;
 let loseOwnershipOnFinish = false;
+let stealOwnershipDuringFinalize = false;
 let upsertConflict = false;
+const activeStreamAtRegistration: Array<string | null> = [];
 
 const upsertScopedCalls: UpsertScopedInput[] = [];
 const compareAndSetCalls: Array<{
@@ -51,8 +53,6 @@ const compareAndSetCalls: Array<{
   expected: string | null;
   next: string | null;
 }> = [];
-const updateActiveCalls: Array<{ chatId: string; streamId: string | null }> =
-  [];
 
 mock.module("@open-harness/agent", () => ({
   discoverSkills: async () => [],
@@ -124,7 +124,9 @@ mock.module("@/lib/models", () => ({
 
 mock.module("@/lib/resumable-stream-context", () => ({
   resumableStreamContext: {
-    createNewResumableStream: async () => {},
+    createNewResumableStream: async () => {
+      activeStreamAtRegistration.push(chatState.activeStreamId);
+    },
   },
 }));
 
@@ -157,16 +159,16 @@ mock.module("@/lib/db/sessions", () => ({
   createChatMessageIfNotExists: async () => undefined,
   updateChat: async () => ({}),
   updateSession: async () => ({}),
-  updateChatActiveStreamId: async (chatId: string, streamId: string | null) => {
-    updateActiveCalls.push({ chatId, streamId });
-    chatState.activeStreamId = streamId;
-  },
   compareAndSetChatActiveStreamId: async (
     chatId: string,
     expected: string | null,
     next: string | null,
   ) => {
     compareAndSetCalls.push({ chatId, expected, next });
+    if (stealOwnershipDuringFinalize && next === null) {
+      chatState.activeStreamId = "newer-stream-token";
+      return false;
+    }
     if (chatState.activeStreamId !== expected) {
       return false;
     }
@@ -189,10 +191,11 @@ describe("/api/chat ownership guards", () => {
     nextNanoId = 0;
     getChatByIdCallCount = 0;
     loseOwnershipOnFinish = false;
+    stealOwnershipDuringFinalize = false;
     upsertConflict = false;
     upsertScopedCalls.length = 0;
     compareAndSetCalls.length = 0;
-    updateActiveCalls.length = 0;
+    activeStreamAtRegistration.length = 0;
     chatState = {
       id: "chat-1",
       sessionId: "session-1",
@@ -228,11 +231,44 @@ describe("/api/chat ownership guards", () => {
     expect(upsertScopedCalls.length).toBe(2);
     expect(upsertScopedCalls[0]?.id).toBe("assistant-live");
     expect(upsertScopedCalls[1]?.id).toBe("assistant-final");
+    expect(activeStreamAtRegistration[0]).toBeNull();
+    expect(compareAndSetCalls[0]?.expected).toBeNull();
+    expect(compareAndSetCalls[0]?.next).toContain(":request-token");
   });
 
   test("skips onFinish assistant upsert when ownership is lost", async () => {
     const { POST } = await routeModulePromise;
     loseOwnershipOnFinish = true;
+
+    const request = new Request("http://localhost/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sessionId: "session-1",
+        chatId: "chat-1",
+        messages: [
+          {
+            id: "assistant-live",
+            role: "assistant",
+            parts: [
+              { type: "tool-ask_user_question", state: "input-available" },
+            ],
+          },
+        ],
+      }),
+    });
+
+    const response = await POST(request);
+
+    expect(response.ok).toBe(true);
+    expect(upsertScopedCalls.length).toBe(1);
+    expect(upsertScopedCalls[0]?.id).toBe("assistant-live");
+    expect(chatState.activeStreamId).toBe("newer-stream-token");
+  });
+
+  test("skips onFinish writes when ownership changes during finalize CAS", async () => {
+    const { POST } = await routeModulePromise;
+    stealOwnershipDuringFinalize = true;
 
     const request = new Request("http://localhost/api/chat", {
       method: "POST",

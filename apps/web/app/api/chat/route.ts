@@ -15,7 +15,6 @@ import {
   getChatMessages,
   getSessionById,
   updateChat,
-  updateChatActiveStreamId,
   updateSession,
   upsertChatMessageScoped,
 } from "@/lib/db/sessions";
@@ -34,6 +33,29 @@ interface ChatRequestBody {
   sessionId?: string;
   chatId?: string;
 }
+
+const STREAM_TOKEN_SEPARATOR = ":";
+
+const createStreamToken = (startedAtMs: number) =>
+  `${startedAtMs}${STREAM_TOKEN_SEPARATOR}${nanoid()}`;
+
+const parseStreamTokenStartedAt = (streamToken: string | null) => {
+  if (!streamToken) {
+    return null;
+  }
+
+  const separatorIndex = streamToken.indexOf(STREAM_TOKEN_SEPARATOR);
+  if (separatorIndex <= 0) {
+    return null;
+  }
+
+  const startedAt = Number(streamToken.slice(0, separatorIndex));
+  if (!Number.isFinite(startedAt)) {
+    return null;
+  }
+
+  return startedAt;
+};
 
 export async function POST(req: Request) {
   // 1. Validate session
@@ -82,6 +104,7 @@ export async function POST(req: Request) {
   // a long-running AI response could cause the sandbox to appear idle and
   // get hibernated mid-request.
   const requestStartedAt = new Date();
+  const requestStartedAtMs = requestStartedAt.getTime();
   await updateSession(sessionId, {
     ...buildActiveLifecycleUpdate(sessionRecord.sandboxState, {
       activityAt: requestStartedAt,
@@ -137,18 +160,40 @@ export async function POST(req: Request) {
   );
   const skills = await discoverSkills(sandbox, skillDirs);
 
-  const requestStreamToken = nanoid();
-  await updateChatActiveStreamId(chatId, requestStreamToken);
-  let ownedStreamToken = requestStreamToken;
+  let ownedStreamToken = createStreamToken(requestStartedAtMs);
 
-  const isCurrentStreamOwner = async () => {
-    const latestChat = await getChatById(chatId);
-    return latestChat?.activeStreamId === ownedStreamToken;
+  const claimStreamOwnership = async () => {
+    // Retry once if another request updates activeStreamId between our read and CAS.
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const latestChat = await getChatById(chatId);
+      const activeStreamId = latestChat?.activeStreamId ?? null;
+      const activeStartedAt = parseStreamTokenStartedAt(activeStreamId);
+
+      if (
+        activeStartedAt !== null &&
+        activeStartedAt > requestStartedAtMs &&
+        activeStreamId !== ownedStreamToken
+      ) {
+        return false;
+      }
+
+      const claimed = await compareAndSetChatActiveStreamId(
+        chatId,
+        activeStreamId,
+        ownedStreamToken,
+      );
+      if (claimed) {
+        return true;
+      }
+    }
+
+    return false;
   };
 
-  // Save the latest incoming message immediately (incremental persistence).
-  // This allows mid-turn tool state updates from client-side tools to survive
-  // route transitions before onFinish persists the final assistant message.
+  let pendingAssistantSnapshot: WebAgentUIMessage | null = null;
+
+  // Save the latest incoming user message immediately (incremental persistence).
+  // Assistant snapshots are persisted after stream ownership is atomically claimed.
   if (chatId && messages.length > 0) {
     const latestMessage = messages[messages.length - 1];
     if (
@@ -187,19 +232,8 @@ export async function POST(req: Request) {
               await updateChat(chatId, { title });
             }
           }
-        } else if (await isCurrentStreamOwner()) {
-          const upsertResult = await upsertChatMessageScoped({
-            id: latestMessage.id,
-            chatId,
-            role: "assistant",
-            parts: latestMessage,
-          });
-
-          if (upsertResult.status === "conflict") {
-            console.warn(
-              `Skipped assistant message upsert due to ID scope conflict: ${latestMessage.id}`,
-            );
-          }
+        } else {
+          pendingAssistantSnapshot = latestMessage;
         }
       } catch (error) {
         console.error("Failed to save latest chat message:", error);
@@ -240,13 +274,18 @@ export async function POST(req: Request) {
   let streamTokenCleared = false;
   const clearOwnedStreamToken = async () => {
     if (streamTokenCleared) {
-      return;
+      return false;
     }
     streamTokenCleared = true;
     try {
-      await compareAndSetChatActiveStreamId(chatId, ownedStreamToken, null);
+      return await compareAndSetChatActiveStreamId(
+        chatId,
+        ownedStreamToken,
+        null,
+      );
     } catch (error) {
       console.error("Failed to finalize active stream token:", error);
+      return false;
     }
   };
 
@@ -302,27 +341,42 @@ export async function POST(req: Request) {
       return undefined;
     },
     async consumeSseStream({ stream }) {
-      const streamId = nanoid();
       await resumableStreamContext.createNewResumableStream(
-        streamId,
+        ownedStreamToken,
         () => stream,
       );
-      const claimed = await compareAndSetChatActiveStreamId(
-        chatId,
-        ownedStreamToken,
-        streamId,
-      );
-      if (claimed) {
-        ownedStreamToken = streamId;
+
+      const claimed = await claimStreamOwnership();
+      if (!claimed) {
+        return;
+      }
+
+      if (!pendingAssistantSnapshot) {
+        return;
+      }
+
+      try {
+        const upsertResult = await upsertChatMessageScoped({
+          id: pendingAssistantSnapshot.id,
+          chatId,
+          role: "assistant",
+          parts: pendingAssistantSnapshot,
+        });
+        if (upsertResult.status === "conflict") {
+          console.warn(
+            `Skipped assistant message upsert due to ID scope conflict: ${pendingAssistantSnapshot.id}`,
+          );
+        }
+      } catch (error) {
+        console.error("Failed to save latest chat message:", error);
       }
     },
     onFinish: async ({ responseMessage }) => {
       if (chatId) {
-        const isCurrentOwner = await isCurrentStreamOwner();
         closeStopSignal();
-        await clearOwnedStreamToken();
+        const stillOwnsStream = await clearOwnedStreamToken();
 
-        if (!isCurrentOwner) {
+        if (!stillOwnsStream) {
           return;
         }
 
