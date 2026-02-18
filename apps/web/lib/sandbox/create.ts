@@ -118,7 +118,28 @@ export async function createSandboxForSession(
       };
     }
     // Still no runtime state after waiting. The other caller may have
-    // failed. Fall through and create the sandbox ourselves.
+    // failed. Try to re-claim before proceeding so we get the correct
+    // lifecycleVersion for the subsequent updateSession call.
+    const retrySession = await getSessionById(sessionId);
+    const retryVersion = retrySession?.lifecycleVersion ?? 0;
+    const reClaimed = await claimSandboxProvisioning(sessionId, retryVersion);
+    if (!reClaimed) {
+      // Another caller is still active -- one more check for a finished sandbox.
+      const finalCheck = await getSessionById(sessionId);
+      if (finalCheck && hasRuntimeSandboxState(finalCheck.sandboxState)) {
+        console.log(
+          `[Sandbox] Skipping creation for session ${sessionId} -- sandbox provisioned after re-claim attempt`,
+        );
+        return {
+          createdAt: Date.now(),
+          timeout:
+            sandboxType === "just-bash" ? null : DEFAULT_SANDBOX_TIMEOUT_MS,
+          currentBranch: repoUrl ? branch : undefined,
+          mode: sandboxType,
+          timing: { readyMs: 0 },
+        };
+      }
+    }
     console.warn(
       `[Sandbox] Claim failed but no sandbox found for session ${sessionId} after waiting -- proceeding with creation`,
     );

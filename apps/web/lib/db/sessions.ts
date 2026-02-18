@@ -101,6 +101,7 @@ export async function claimSandboxProvisioning(
     .update(sessions)
     .set({
       lifecycleVersion: expectedVersion + 1,
+      lifecycleState: "active",
       updatedAt: new Date(),
     })
     .where(
