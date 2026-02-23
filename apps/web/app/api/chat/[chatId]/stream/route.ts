@@ -7,6 +7,7 @@ import {
 } from "@/lib/db/sessions";
 import { resumableStreamContext } from "@/lib/resumable-stream-context";
 import { getServerSession } from "@/lib/session/get-server-session";
+import { getStreamOffset } from "@/lib/stream-offset";
 
 type RouteContext = {
   params: Promise<{ chatId: string }>;
@@ -35,8 +36,14 @@ export async function GET(_request: Request, context: RouteContext) {
     return new Response(null, { status: 204 });
   }
 
+  // Skip already-accumulated characters so the client jumps straight to the
+  // live tail of the stream instead of replaying potentially 15+ seconds of
+  // historical data (the client already has persisted messages from the DB).
+  const skipCharacters = await getStreamOffset(chat.activeStreamId);
+
   const stream = await resumableStreamContext.resumeExistingStream(
     chat.activeStreamId,
+    skipCharacters || undefined,
   );
 
   if (!stream) {

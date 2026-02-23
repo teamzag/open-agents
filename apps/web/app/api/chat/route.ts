@@ -33,6 +33,7 @@ import { getUserGitHubToken } from "@/lib/github/user-token";
 import { getUserPreferences } from "@/lib/db/user-preferences";
 import { DEFAULT_MODEL_ID } from "@/lib/models";
 import { resumableStreamContext } from "@/lib/resumable-stream-context";
+import { setStreamOffset } from "@/lib/stream-offset";
 import { buildActiveLifecycleUpdate } from "@/lib/sandbox/lifecycle";
 import { isSandboxActive } from "@/lib/sandbox/utils";
 import { getServerSession } from "@/lib/session/get-server-session";
@@ -424,9 +425,38 @@ export async function POST(req: Request) {
       return undefined;
     },
     async consumeSseStream({ stream }) {
+      // Wrap the SSE stream to track accumulated character count.
+      // On resume we pass this offset as `skipCharacters` so the
+      // resumable-stream library skips already-seen data and the
+      // client jumps straight to the live tail of the stream.
+      let totalChars = 0;
+      let flushQueued = false;
+      const FLUSH_INTERVAL_MS = 2_000;
+
+      const countingStream = stream.pipeThrough(
+        new TransformStream<string, string>({
+          transform(chunk, controller) {
+            totalChars += chunk.length;
+            controller.enqueue(chunk);
+
+            if (!flushQueued) {
+              flushQueued = true;
+              setTimeout(() => {
+                flushQueued = false;
+                void setStreamOffset(ownedStreamToken, totalChars);
+              }, FLUSH_INTERVAL_MS);
+            }
+          },
+          flush() {
+            // Final flush so late-arriving resume requests see the full offset.
+            void setStreamOffset(ownedStreamToken, totalChars);
+          },
+        }),
+      );
+
       await resumableStreamContext.createNewResumableStream(
         ownedStreamToken,
-        () => stream,
+        () => countingStream,
       );
 
       const claimed = await claimStreamOwnership();
