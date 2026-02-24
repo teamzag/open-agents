@@ -1,4 +1,4 @@
-import type { Sandbox } from "@open-harness/sandbox";
+import type { Sandbox, SandboxState, ConnectOptions } from "@open-harness/sandbox";
 import {
   gateway,
   type LanguageModel,
@@ -58,6 +58,60 @@ export const durableCallOptionsSchema = z.object({
 export type DurableOpenHarnessAgentCallOptions = z.infer<
   typeof durableCallOptionsSchema
 >;
+
+// ---------------------------------------------------------------------------
+// Serializable call options – for use as workflow arguments
+// ---------------------------------------------------------------------------
+
+/**
+ * JSON-serializable version of {@link DurableOpenHarnessAgentCallOptions}.
+ *
+ * Workflow arguments must be serializable. This replaces the live `Sandbox`
+ * and `LanguageModel` instances with their serializable representations
+ * (sandbox state + connect options, model ID strings).
+ *
+ * Use {@link reconstituteDurableCallOptions} inside a `"use step"` function
+ * to reconstruct the full call options from serializable data.
+ */
+export interface SerializableDurableCallOptions {
+  sandboxState: SandboxState;
+  sandboxConnectOptions?: ConnectOptions;
+  approval: DurableOpenHarnessAgentCallOptions["approval"];
+  modelId?: string;
+  subagentModelId?: string;
+  customInstructions?: string;
+  skills?: SkillMetadata[];
+}
+
+/**
+ * Reconstruct full {@link DurableOpenHarnessAgentCallOptions} from serializable
+ * workflow arguments. Call this inside a `"use step"` function where Node.js
+ * modules are available.
+ */
+export async function reconstituteDurableCallOptions(
+  options: SerializableDurableCallOptions,
+): Promise<DurableOpenHarnessAgentCallOptions> {
+  const { connectSandbox } = await import("@open-harness/sandbox");
+
+  const sandbox = await connectSandbox(
+    options.sandboxState,
+    options.sandboxConnectOptions,
+  );
+
+  const model = options.modelId ? gateway(options.modelId as Parameters<typeof gateway>[0]) : undefined;
+  const subagentModel = options.subagentModelId
+    ? gateway(options.subagentModelId as Parameters<typeof gateway>[0])
+    : undefined;
+
+  return {
+    sandbox,
+    approval: options.approval,
+    model,
+    subagentModel,
+    customInstructions: options.customInstructions,
+    skills: options.skills,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Default model – same as non-durable agent

@@ -8,6 +8,7 @@ export { type GatewayConfig, type GatewayOptions, gateway } from "./models";
 export type {
   DurableOpenHarnessAgent,
   DurableOpenHarnessAgentCallOptions,
+  SerializableDurableCallOptions,
 } from "./durable-open-harness-agent";
 export {
   durableCallOptionsSchema,
@@ -15,6 +16,7 @@ export {
   durableDefaultModelLabel,
   durableOpenHarnessAgent,
   prepareDurableCall,
+  reconstituteDurableCallOptions,
 } from "./durable-open-harness-agent";
 export type { OpenHarnessAgentCallOptions } from "./open-harness-agent";
 export {

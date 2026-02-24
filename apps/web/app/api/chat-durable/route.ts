@@ -259,13 +259,32 @@ export async function POST(req: Request) {
     console.error("Failed to resolve subagent model preference:", error);
   }
 
-  // Start the durable workflow
+  // Build serializable sandbox state for the workflow.
+  // Workflow arguments must be JSON-serializable – we cannot pass the live
+  // sandbox instance (it contains SDK clients, timers, etc.).
+  const sandboxState = sandbox.getState?.() as import("@open-harness/sandbox").SandboxState;
+  if (!sandboxState) {
+    return Response.json(
+      { error: "Sandbox does not support state serialization" },
+      { status: 500 },
+    );
+  }
+
+  // Start the durable workflow with serializable arguments only
   const run = await start(durableChatWorkflow, [
     modelMessages,
     {
-      sandbox,
-      model,
-      subagentModel,
+      sandboxState,
+      sandboxConnectOptions: {
+        env: githubToken ? { GITHUB_TOKEN: githubToken } : undefined,
+        ports: DEFAULT_SANDBOX_PORTS,
+      },
+      modelId: typeof model === "string" ? model : model.modelId,
+      subagentModelId: subagentModel
+        ? typeof subagentModel === "string"
+          ? subagentModel
+          : subagentModel.modelId
+        : undefined,
       approval: {
         type: "interactive" as const,
         autoApprove: "all" as const,
