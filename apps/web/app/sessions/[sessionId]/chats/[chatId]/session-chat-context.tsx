@@ -296,10 +296,7 @@ export function SessionChatProvider({
           headers,
           credentials,
         }),
-        prepareReconnectToStreamRequest: async ({
-          headers,
-          credentials,
-        }) => ({
+        prepareReconnectToStreamRequest: async ({ headers, credentials }) => ({
           api: `/api/chat/${chatInfo.id}/stream`,
           headers,
           credentials,

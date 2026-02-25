@@ -11,10 +11,8 @@ import { DEFAULT_SANDBOX_PORTS } from "@/lib/sandbox/config";
 import {
   convertToModelMessages,
   createUIMessageStreamResponse,
-  readUIMessageStream,
   type GatewayModelId,
   type LanguageModelUsage,
-  type UIMessageChunk,
 } from "ai";
 import { after } from "next/server";
 import { start } from "workflow/api";
@@ -319,7 +317,10 @@ export async function POST(req: Request) {
     await updateChatActiveStreamId(chatId, run.runId);
   } catch (error) {
     void run.cancel().catch((cancelError) => {
-      console.error("Failed to cancel chat workflow run after DB error:", cancelError);
+      console.error(
+        "Failed to cancel chat workflow run after DB error:",
+        cancelError,
+      );
     });
     throw error;
   }
@@ -346,24 +347,6 @@ export async function POST(req: Request) {
       workflowResult = await run.returnValue;
     } catch (error) {
       console.error("Durable chat workflow failed:", error);
-
-      let partialResponseMessage: WebAgentUIMessage | null = null;
-      try {
-        for await (const message of readUIMessageStream<WebAgentUIMessage>({
-          stream: run.getReadable<UIMessageChunk>(),
-        })) {
-          partialResponseMessage = message;
-        }
-      } catch (streamError) {
-        console.error("Failed to recover partial workflow stream:", streamError);
-      }
-
-      if (partialResponseMessage) {
-        workflowResult = {
-          responseMessage: partialResponseMessage,
-          totalMessageUsage: undefined,
-        };
-      }
     }
 
     if (!workflowResult) {
@@ -508,7 +491,7 @@ export async function POST(req: Request) {
   });
 
   return createUIMessageStreamResponse({
-    stream: run.getReadable<UIMessageChunk>(),
+    stream: run.getReadable(),
     headers: {
       "x-workflow-run-id": run.runId,
     },

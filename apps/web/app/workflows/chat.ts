@@ -56,7 +56,7 @@ async function runChatStep(
 
   const stream = result.toUIMessageStream<UIMessage>({
     onFinish: ({ responseMessage: finishedMessage }) => {
-      responseMessage = toSerializable(finishedMessage);
+      responseMessage = finishedMessage;
     },
   });
 
@@ -70,27 +70,24 @@ async function runChatStep(
         break;
       }
 
-      await writer.write(toSerializable(value));
+      await writer.write(value);
     }
   } finally {
     reader.releaseLock();
     writer.releaseLock();
   }
 
-  const totalMessageUsage = toSerializable(await result.usage);
+  let totalMessageUsage: LanguageModelUsage | undefined;
+  try {
+    totalMessageUsage = await result.usage;
+  } catch (error) {
+    console.error("Failed to read durable chat usage:", error);
+  }
 
   return {
     responseMessage,
     totalMessageUsage,
   };
-}
-
-function toSerializable<T>(value: T): T {
-  return JSON.parse(
-    JSON.stringify(value, (_key, nestedValue) =>
-      typeof nestedValue === "bigint" ? nestedValue.toString() : nestedValue,
-    ),
-  ) as T;
 }
 
 async function closeStream(writable: WritableStream<UIMessageChunk>) {
