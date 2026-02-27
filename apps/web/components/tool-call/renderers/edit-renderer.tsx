@@ -65,8 +65,8 @@ export function EditRenderer({
           ? "bg-red-500"
           : "bg-green-500";
 
-  // Has expandable content if strings are substantial
-  const hasExpandableContent = oldString.length > 200 || newString.length > 200;
+  // Keep rich diff rendering opt-in to avoid expensive inline diffs in long chats.
+  const hasExpandableContent = showDiff && !mergedState.denied;
 
   const handleClick = () => {
     if (hasExpandableContent) {
@@ -133,31 +133,24 @@ export function EditRenderer({
           </div>
         )}
 
-      {/* Collapsed preview */}
-      {!isExpanded &&
-        showDiff &&
-        !mergedState.approvalRequested &&
-        !mergedState.denied && (
-          <>
-            <div className="mt-2 pl-5 text-sm">
-              <span className="text-green-500">
-                {additions} addition{additions !== 1 ? "s" : ""}
-              </span>
-              <span> and </span>
-              <span className="text-red-500">
-                {removals} removal{removals !== 1 ? "s" : ""}
-              </span>
-            </div>
-
-            <div className="ml-5 mt-2 max-h-40 overflow-hidden">
-              <MultiFileDiff
-                oldFile={{ name: rawFilePath, contents: oldString }}
-                newFile={{ name: rawFilePath, contents: newString }}
-                options={defaultDiffOptions}
-              />
-            </div>
-          </>
-        )}
+      {/* Collapsed summary */}
+      {!isExpanded && showDiff && !mergedState.denied && (
+        <div className="mt-2 pl-5 text-sm text-muted-foreground">
+          <span className="text-green-500">
+            {additions} addition{additions !== 1 ? "s" : ""}
+          </span>
+          <span className="text-foreground"> and </span>
+          <span className="text-red-500">
+            {removals} removal{removals !== 1 ? "s" : ""}
+          </span>
+          {hasExpandableContent ? (
+            <span className="text-muted-foreground">
+              {" "}
+              • Click to preview diff
+            </span>
+          ) : null}
+        </div>
+      )}
 
       {/* Expanded full diff */}
       {isExpanded && showDiff && !mergedState.denied && (
