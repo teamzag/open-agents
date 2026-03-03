@@ -166,15 +166,8 @@ export function useSessionChats(
               (overlay) => overlay.streaming,
             )
           : false;
-        // Keep fast polling briefly after streaming clears so we reconcile
-        // the server state quickly and can drop the cleared-overlay marker.
-        const hasPendingClear = optimisticOverlay
-          ? Array.from(optimisticOverlay.values()).some(
-              (overlay) => overlay.streamingClearedAt,
-            )
-          : false;
 
-        if (hasStreamingChat || hasOptimisticStreaming || hasPendingClear) {
+        if (hasStreamingChat || hasOptimisticStreaming) {
           return STREAMING_REFRESH_INTERVAL_MS;
         }
 
