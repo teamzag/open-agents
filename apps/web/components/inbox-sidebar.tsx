@@ -50,6 +50,7 @@ type InboxSidebarProps = {
   onSessionClick: (session: SessionWithUnread) => void;
   onSessionPrefetch: (session: SessionWithUnread) => void;
   onRenameSession: (sessionId: string, title: string) => Promise<void>;
+  onArchiveSession: (sessionId: string) => Promise<void>;
   createSession: (input: CreateSessionInput) => Promise<{
     session: { id: string };
     chat: { id: string };
@@ -121,6 +122,7 @@ type SessionRowProps = {
   onSessionClick: (session: SessionWithUnread) => void;
   onSessionPrefetch: (session: SessionWithUnread) => void;
   onOpenRenameDialog: (session: SessionWithUnread) => void;
+  onArchiveSession: (session: SessionWithUnread) => void;
 };
 
 const SessionRow = memo(function SessionRow({
@@ -129,6 +131,7 @@ const SessionRow = memo(function SessionRow({
   onSessionClick,
   onSessionPrefetch,
   onOpenRenameDialog,
+  onArchiveSession,
 }: SessionRowProps) {
   const isWorking = session.hasStreaming;
   const isUnread = session.hasUnread && !isActive;
@@ -218,6 +221,15 @@ const SessionRow = memo(function SessionRow({
             <Pencil className="h-3.5 w-3.5" />
             <span>Rename session</span>
           </DropdownMenuItem>
+          {session.status !== "archived" ? (
+            <DropdownMenuItem
+              onClick={() => onArchiveSession(session)}
+              className="gap-2"
+            >
+              <Archive className="h-3.5 w-3.5" />
+              <span>Archive session</span>
+            </DropdownMenuItem>
+          ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
@@ -254,6 +266,7 @@ export function InboxSidebar({
   onSessionClick,
   onSessionPrefetch,
   onRenameSession,
+  onArchiveSession,
   createSession,
   lastRepo,
 }: InboxSidebarProps) {
@@ -300,6 +313,17 @@ export function InboxSidebar({
       onSessionPrefetch(session);
     },
     [onSessionPrefetch],
+  );
+
+  const handleArchiveSession = useCallback(
+    async (session: SessionWithUnread) => {
+      try {
+        await onArchiveSession(session.id);
+      } catch (err) {
+        console.error("Failed to archive session:", err);
+      }
+    },
+    [onArchiveSession],
   );
 
   const closeRenameDialog = useCallback(() => {
@@ -428,6 +452,7 @@ export function InboxSidebar({
                 onSessionClick={handleSessionClick}
                 onSessionPrefetch={handleSessionPrefetch}
                 onOpenRenameDialog={handleOpenRenameDialog}
+                onArchiveSession={handleArchiveSession}
               />
             ))}
           </div>

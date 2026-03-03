@@ -42,6 +42,7 @@ export function SessionsIndexShell({
     loading: sessionsLoading,
     refreshSessions,
     createSession,
+    archiveSession,
   } = useSessions({ enabled: true, initialData: initialSessionsData });
 
   const getSessionHref = useCallback((targetSession: SessionWithUnread) => {
@@ -77,6 +78,13 @@ export function SessionsIndexShell({
     [refreshSessions],
   );
 
+  const handleArchiveSession = useCallback(
+    async (targetSessionId: string) => {
+      await archiveSession(targetSessionId);
+    },
+    [archiveSession],
+  );
+
   return (
     <SidebarProvider
       className="h-dvh overflow-hidden"
@@ -95,6 +103,7 @@ export function SessionsIndexShell({
             onSessionClick={handleSessionClick}
             onSessionPrefetch={handleSessionPrefetch}
             onRenameSession={handleRenameSession}
+            onArchiveSession={handleArchiveSession}
             createSession={createSession}
             lastRepo={lastRepo}
           />

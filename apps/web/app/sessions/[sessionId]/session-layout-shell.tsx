@@ -51,6 +51,7 @@ export function SessionLayoutShell({
     loading: sessionsLoading,
     refreshSessions,
     createSession,
+    archiveSession,
   } = useSessions({
     enabled: true,
     initialData: initialSessionsData,
@@ -109,6 +110,16 @@ export function SessionLayoutShell({
     [refreshSessions],
   );
 
+  const handleArchiveSession = useCallback(
+    async (targetSessionId: string) => {
+      await archiveSession(targetSessionId);
+      if (targetSessionId === sessionId) {
+        router.push("/sessions");
+      }
+    },
+    [archiveSession, router, sessionId],
+  );
+
   const switchChat = useCallback(
     (chatId: string) => {
       router.push(`/sessions/${sessionId}/chats/${chatId}`);
@@ -131,6 +142,7 @@ export function SessionLayoutShell({
       onSessionClick={handleSessionClick}
       onSessionPrefetch={handleSessionPrefetch}
       onRenameSession={handleRenameSession}
+      onArchiveSession={handleArchiveSession}
       createSession={createSession}
       lastRepo={lastRepo}
     />
