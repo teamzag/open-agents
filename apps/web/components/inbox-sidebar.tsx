@@ -118,11 +118,7 @@ function DiffStats({
   );
 }
 
-function VercelProjectBadge({
-  projectName,
-}: {
-  projectName: string | null;
-}) {
+function VercelProjectBadge({ projectName }: { projectName: string | null }) {
   if (!projectName) return null;
 
   return (
@@ -233,9 +229,7 @@ const SessionRow = memo(function SessionRow({
               <span className="text-muted-foreground/60">Working...</span>
             )}
             <span className="ml-auto flex shrink-0 items-center gap-1.5">
-              <VercelProjectBadge
-                projectName={session.vercelProjectName}
-              />
+              <VercelProjectBadge projectName={session.vercelProjectName} />
               <PrBadge prNumber={session.prNumber} status={session.prStatus} />
               <DiffStats
                 added={session.linesAdded}
