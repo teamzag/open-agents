@@ -150,6 +150,8 @@ type SessionChatContextValue = {
   hadInitialMessages: boolean;
   /** The initial message snapshot used for SSR hydration */
   initialMessages: WebAgentUIMessage[];
+  /** Pre-computed durations (ms) for initial assistant messages, keyed by message id */
+  initialMessageDurations: Record<string, number>;
   /** Diff data (from live sandbox or cache) */
   diff: DiffResponse | null;
   /** Whether diff is loading */
@@ -284,6 +286,7 @@ type SessionChatProviderProps = {
   session: Session;
   chat: Chat;
   initialMessages: WebAgentUIMessage[];
+  initialMessageDurations: Record<string, number>;
   initialModelOptions: ModelOption[];
   children: ReactNode;
 };
@@ -296,6 +299,7 @@ export function SessionChatProvider({
   session: initialSession,
   chat: initialChat,
   initialMessages,
+  initialMessageDurations,
   initialModelOptions,
   children,
 }: SessionChatProviderProps) {
@@ -1141,6 +1145,7 @@ export function SessionChatProvider({
       updateChatModel,
       hadInitialMessages,
       initialMessages,
+      initialMessageDurations,
       diff,
       diffLoading,
       diffRefreshing,
@@ -1193,6 +1198,7 @@ export function SessionChatProvider({
       updateChatModel,
       hadInitialMessages,
       initialMessages,
+      initialMessageDurations,
       diff,
       diffLoading,
       diffRefreshing,

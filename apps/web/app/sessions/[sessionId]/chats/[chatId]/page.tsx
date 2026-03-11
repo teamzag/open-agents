@@ -118,16 +118,22 @@ export default async function SessionChatPage({
     notFound();
   }
 
-  const initialMessages = dbMessages.map((m) => {
-    const message = m.parts as WebAgentUIMessage;
-    return {
-      ...message,
-      metadata: {
-        ...message.metadata,
-        createdAt: m.createdAt.getTime(),
-      },
-    };
-  });
+  const initialMessages = dbMessages.map((m) => m.parts as WebAgentUIMessage);
+
+  // Compute duration for each assistant message based on the gap from the
+  // preceding user message's createdAt (same approach as the share view).
+  const initialMessageDurations: Record<string, number> = {};
+  for (let i = 0; i < dbMessages.length; i++) {
+    const m = dbMessages[i]!;
+    if (m.role === "assistant" && i > 0) {
+      const prev = dbMessages[i - 1];
+      if (prev && prev.role === "user") {
+        initialMessageDurations[m.id] =
+          m.createdAt.getTime() - prev.createdAt.getTime();
+      }
+    }
+  }
+
   const initialModelOptions = withMissingModelOption(
     buildSessionChatModelOptions(initialModels, preferences.modelVariants),
     chat.modelId,
@@ -144,6 +150,7 @@ export default async function SessionChatPage({
         session={sessionRecord}
         chat={chat}
         initialMessages={initialMessages}
+        initialMessageDurations={initialMessageDurations}
         initialModelOptions={initialModelOptions}
       >
         <SessionChatContent

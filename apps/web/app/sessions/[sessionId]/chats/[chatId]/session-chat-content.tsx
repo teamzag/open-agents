@@ -217,9 +217,7 @@ interface GroupedRenderMessage {
   groups: MessageRenderGroup[];
   isStreaming: boolean;
   hiddenActivitySummary: HiddenActivitySummary;
-  /** Epoch ms when this assistant turn started (preceding user message createdAt). */
-  startedAtMs: number | null;
-  /** Total duration in ms for completed assistant turns. */
+  /** Pre-computed duration (ms) for completed assistant turns. */
   durationMs: number | null;
 }
 
@@ -1272,6 +1270,7 @@ export function SessionChatContent({
     stopChatStream,
     retryChatStream,
     initialMessages,
+    initialMessageDurations,
     sandboxInfo,
     setSandboxInfo,
     archiveSession,
@@ -1510,40 +1509,21 @@ export function SessionChatContent({
         }
       }
 
-      // Compute timing from message metadata createdAt
-      let startedAtMs: number | null = null;
-      let durationMs: number | null = null;
-
-      if (message.role === "assistant") {
-        const prevMessage =
-          messageIndex > 0 ? renderMessages[messageIndex - 1] : null;
-        const prevCreatedAt =
-          prevMessage?.role === "user"
-            ? (prevMessage.metadata?.createdAt ?? null)
-            : null;
-
-        if (prevCreatedAt != null) {
-          startedAtMs = prevCreatedAt;
-        }
-
-        if (!isStreaming && startedAtMs != null) {
-          const assistantCreatedAt = message.metadata?.createdAt ?? null;
-          if (assistantCreatedAt != null) {
-            durationMs = Math.max(0, assistantCreatedAt - startedAtMs);
-          }
-        }
-      }
+      // Look up pre-computed duration from the server (same approach as share view)
+      const durationMs =
+        message.role === "assistant"
+          ? (initialMessageDurations[message.id] ?? null)
+          : null;
 
       return {
         message,
         groups,
         isStreaming,
         hiddenActivitySummary,
-        startedAtMs,
         durationMs,
       };
     });
-  }, [renderMessages, isChatInFlight]);
+  }, [renderMessages, isChatInFlight, initialMessageDurations]);
   const [isUpdatingModel, setIsUpdatingModel] = useState(false);
   const lastStatusSyncAtRef = useRef(0);
   const statusSyncInFlightRef = useRef(false);
@@ -3125,7 +3105,6 @@ export function SessionChatContent({
                   groups,
                   isStreaming: isMessageStreaming,
                   hiddenActivitySummary,
-                  startedAtMs: messageStartedAtMs,
                   durationMs: messageDurationMs,
                 }) => {
                   const showActivitySummary =
@@ -3139,7 +3118,11 @@ export function SessionChatContent({
                         <ActivityStatusBar
                           summary={hiddenActivitySummary}
                           isStreaming={isMessageStreaming}
-                          startedAtMs={messageStartedAtMs}
+                          startedAtMs={
+                            isMessageStreaming
+                              ? inFlightStartedAtRef.current
+                              : null
+                          }
                           durationMs={messageDurationMs}
                         />
                       )}
