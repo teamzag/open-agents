@@ -13,6 +13,13 @@ let sessionRecord: TestSessionRecord | null;
 let chatRecord: TestChatRecord | null;
 const clearedStreamIds: Array<string | null> = [];
 const backgroundTasks: Promise<void>[] = [];
+let getWorkflowRunReadableStreamImpl = async (_runId: string) =>
+  new ReadableStream({
+    start(controller) {
+      controller.enqueue({ type: "finish", finishReason: "stop" });
+      controller.close();
+    },
+  });
 
 mock.module("next/server", () => ({
   after: (task: Promise<unknown> | (() => Promise<unknown>)) => {
@@ -44,13 +51,8 @@ mock.module("@/lib/db/sessions", () => ({
 }));
 
 mock.module("@/lib/chat/get-workflow-run-readable-stream", () => ({
-  getWorkflowRunReadableStream: async () =>
-    new ReadableStream({
-      start(controller) {
-        controller.enqueue({ type: "finish", finishReason: "stop" });
-        controller.close();
-      },
-    }),
+  getWorkflowRunReadableStream: (runId: string) =>
+    getWorkflowRunReadableStreamImpl(runId),
 }));
 
 mock.module("@/lib/session/get-server-session", () => ({
@@ -68,6 +70,13 @@ describe("/api/chat/[chatId]/stream", () => {
       sessionId: "session-1",
       activeStreamId: "wrun_active",
     };
+    getWorkflowRunReadableStreamImpl = async (_runId: string) =>
+      new ReadableStream({
+        start(controller) {
+          controller.enqueue({ type: "finish", finishReason: "stop" });
+          controller.close();
+        },
+      });
     clearedStreamIds.length = 0;
     backgroundTasks.length = 0;
   });
@@ -105,6 +114,27 @@ describe("/api/chat/[chatId]/stream", () => {
     const body = await response.text();
     expect(response.ok).toBe(true);
     expect(body).toContain('"finishReason":"stop"');
+  });
+
+  test("returns idle and clears stale workflow ids when the workflow stream is missing", async () => {
+    chatRecord = {
+      sessionId: "session-1",
+      activeStreamId: "wrun_missing",
+    };
+    getWorkflowRunReadableStreamImpl = async () => {
+      throw new Error("stream missing");
+    };
+
+    const { GET } = await routeModulePromise;
+    const response = await GET(
+      new Request("http://localhost/api/chat/chat-1/stream"),
+      { params: Promise.resolve({ chatId: "chat-1" }) },
+    );
+
+    await Promise.all(backgroundTasks);
+
+    expect(response.status).toBe(204);
+    expect(clearedStreamIds).toEqual([null]);
   });
 
   test("validates startIndex", async () => {

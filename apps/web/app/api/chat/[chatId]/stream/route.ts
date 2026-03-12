@@ -51,20 +51,35 @@ export async function GET(request: Request, context: RouteContext) {
     );
   }
 
-  const run = getRun(chat.activeStreamId);
-  const status = await run.status;
-  if (status === "cancelled") {
-    return createUIMessageStreamResponse({
-      stream: createTerminalFinishStream("stop"),
-    });
+  try {
+    const run = getRun(chat.activeStreamId);
+    const status = await run.status;
+    if (status === "cancelled") {
+      return createUIMessageStreamResponse({
+        stream: createTerminalFinishStream("stop"),
+      });
+    }
+
+    const stream = await getWorkflowRunReadableStream<WebAgentUIMessageChunk>(
+      chat.activeStreamId,
+      startIndex === undefined ? {} : { startIndex },
+    );
+
+    return createUIMessageStreamResponse({ stream });
+  } catch (error) {
+    console.warn(
+      `[chat] Failed to resume workflow stream ${chat.activeStreamId} for chat ${chatId}; clearing stale activeStreamId`,
+      error,
+    );
+    clearActiveStreamIdInBackground(chatId);
+    return new Response(null, { status: 204 });
   }
+}
 
-  const stream = await getWorkflowRunReadableStream<WebAgentUIMessageChunk>(
-    chat.activeStreamId,
-    startIndex === undefined ? {} : { startIndex },
-  );
-
-  return createUIMessageStreamResponse({ stream });
+function clearActiveStreamIdInBackground(chatId: string) {
+  after(async () => {
+    await updateChatActiveStreamId(chatId, null);
+  });
 }
 
 function parseStartIndex(value: string | null) {

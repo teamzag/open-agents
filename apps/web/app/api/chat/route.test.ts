@@ -31,6 +31,7 @@ let workflowResult = {
   completedNaturally: true,
   stillOwnsRun: true,
 };
+let getWorkflowReturnValue = () => Promise.resolve(workflowResult);
 
 const originalFetch = globalThis.fetch;
 
@@ -58,7 +59,7 @@ mock.module("workflow/api", () => ({
   getRun: (runId: string) => ({
     cancel: async () => {},
     status: Promise.resolve(runId === "wrun_test" ? "running" : "completed"),
-    returnValue: Promise.resolve(workflowResult),
+    returnValue: getWorkflowReturnValue(),
   }),
 }));
 
@@ -144,6 +145,7 @@ describe("/api/chat workflow transport", () => {
       completedNaturally: true,
       stillOwnsRun: true,
     };
+    getWorkflowReturnValue = () => Promise.resolve(workflowResult);
 
     sessionRecord = {
       id: "session-1",
@@ -214,6 +216,7 @@ describe("/api/chat workflow transport", () => {
       completedNaturally: false,
       stillOwnsRun: true,
     };
+    getWorkflowReturnValue = () => Promise.resolve(workflowResult);
 
     const { POST } = await routeModulePromise;
 
@@ -244,6 +247,43 @@ describe("/api/chat workflow transport", () => {
     expect(fetchCalls).toEqual([
       "http://localhost/api/sessions/session-1/diff",
     ]);
+    expect(autoCommitCalls).toHaveLength(0);
+  });
+
+  test("clears the claimed workflow run when monitoring sees a workflow failure", async () => {
+    getWorkflowReturnValue = () => Promise.reject(new Error("workflow failed"));
+
+    const { POST } = await routeModulePromise;
+
+    const response = await POST(
+      new Request("http://localhost/api/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          cookie: "session=abc",
+        },
+        body: JSON.stringify({
+          sessionId: "session-1",
+          chatId: "chat-1",
+          messages: [
+            {
+              id: "user-1",
+              role: "user",
+              parts: [{ type: "text", text: "Fix the bug" }],
+            },
+          ],
+        }),
+      }),
+    );
+
+    await Promise.all(backgroundTasks);
+
+    expect(response.ok).toBe(true);
+    expect(compareAndSetCalls).toEqual([
+      { chatId: "chat-1", expected: null, next: "wrun_test" },
+      { chatId: "chat-1", expected: "wrun_test", next: null },
+    ]);
+    expect(fetchCalls).toHaveLength(0);
     expect(autoCommitCalls).toHaveLength(0);
   });
 });

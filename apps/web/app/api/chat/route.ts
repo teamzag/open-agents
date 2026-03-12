@@ -128,6 +128,7 @@ export async function POST(req: Request) {
       request: req,
       runId: run.runId,
       sessionId,
+      chatId,
       preferences,
       sessionTitle: sessionRecord.title,
       cloneUrl: sessionRecord.cloneUrl,
@@ -289,6 +290,7 @@ async function waitForWorkflowCompletion({
   request,
   runId,
   sessionId,
+  chatId,
   preferences,
   sessionTitle,
   cloneUrl,
@@ -298,6 +300,7 @@ async function waitForWorkflowCompletion({
   request: Request;
   runId: string;
   sessionId: string;
+  chatId: string;
   preferences: Awaited<ReturnType<typeof getUserPreferences>> | null;
   sessionTitle: string;
   cloneUrl: string | null;
@@ -334,8 +337,20 @@ async function waitForWorkflowCompletion({
       });
     }
   } catch (error) {
+    await clearFailedWorkflowRun(chatId, runId);
     console.error(
       `[chat] Failed to monitor workflow completion for session ${sessionId}:`,
+      error,
+    );
+  }
+}
+
+async function clearFailedWorkflowRun(chatId: string, runId: string) {
+  try {
+    await compareAndSetChatActiveStreamId(chatId, runId, null);
+  } catch (error) {
+    console.error(
+      `[chat] Failed to clear active workflow run ${runId} for chat ${chatId}:`,
       error,
     );
   }

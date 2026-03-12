@@ -41,55 +41,85 @@ export async function runAgent(
 
   await sendStart(writable, responseMessageId);
 
-  for (let iteration = 0; iteration < maxIterations; iteration += 1) {
-    const stepResult = await runAgentStep(
-      modelMessages,
-      messages,
-      latestAssistantMessage,
-      writable,
+  try {
+    for (let iteration = 0; iteration < maxIterations; iteration += 1) {
+      const stepResult = await runAgentStep(
+        modelMessages,
+        messages,
+        latestAssistantMessage,
+        writable,
+        options,
+        workflowRunId,
+        responseMessageId,
+      );
+
+      latestAssistantMessage =
+        stepResult.assistantMessage ?? latestAssistantMessage;
+      totalUsage = sumLanguageModelUsage(totalUsage, stepResult.usage);
+      latestSandboxState = stepResult.latestSandboxState ?? latestSandboxState;
+      mainModelId = stepResult.mainModelId;
+      wasAborted = wasAborted || stepResult.stepWasAborted;
+      modelMessages = [...modelMessages, ...stepResult.responseMessages];
+
+      if (
+        !shouldContinueWorkflowAfterStep(
+          stepResult.finishReason,
+          stepResult.assistantMessage,
+        )
+      ) {
+        completedNaturally =
+          !stepResult.stepWasAborted &&
+          stepResult.finishReason !== "tool-calls";
+        break;
+      }
+    }
+
+    const stillOwnsRun = await finalizeRun({
       options,
       workflowRunId,
-      responseMessageId,
-    );
+      latestAssistantMessage,
+      latestSandboxState,
+      totalUsage,
+      mainModelId,
+      wasAborted,
+    });
 
-    latestAssistantMessage =
-      stepResult.assistantMessage ?? latestAssistantMessage;
-    totalUsage = sumLanguageModelUsage(totalUsage, stepResult.usage);
-    latestSandboxState = stepResult.latestSandboxState ?? latestSandboxState;
-    mainModelId = stepResult.mainModelId;
-    wasAborted = wasAborted || stepResult.stepWasAborted;
-    modelMessages = [...modelMessages, ...stepResult.responseMessages];
+    await sendFinish(writable);
 
-    if (
-      !shouldContinueWorkflowAfterStep(
-        stepResult.finishReason,
-        stepResult.assistantMessage,
-      )
-    ) {
-      completedNaturally =
-        !stepResult.stepWasAborted && stepResult.finishReason !== "tool-calls";
-      break;
+    return {
+      wasAborted,
+      completedNaturally,
+      stillOwnsRun,
+    };
+  } catch (error) {
+    try {
+      await finalizeRun({
+        options,
+        workflowRunId,
+        latestAssistantMessage,
+        latestSandboxState,
+        totalUsage,
+        mainModelId,
+        wasAborted,
+      });
+    } catch (finalizeError) {
+      console.error(
+        `[chat] Failed to finalize workflow run ${workflowRunId} after an error:`,
+        finalizeError,
+      );
+    }
+
+    throw error;
+  } finally {
+    try {
+      await closeStream(writable);
+    } catch (error) {
+      console.error(
+        `[chat] Failed to close workflow stream ${workflowRunId}:`,
+        error,
+      );
     }
   }
-
-  const stillOwnsRun = await finalizeRun({
-    options,
-    workflowRunId,
-    latestAssistantMessage,
-    latestSandboxState,
-    totalUsage,
-    mainModelId,
-    wasAborted,
-  });
-
-  await sendFinish(writable);
-  await closeStream(writable);
-
-  return {
-    wasAborted,
-    completedNaturally,
-    stillOwnsRun,
-  };
 }
 
 function getLatestAssistantMessage(messages: WebAgentUIMessage[]) {
