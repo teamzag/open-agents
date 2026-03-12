@@ -146,6 +146,10 @@ const Streamdown = dynamic(
 
 const STREAM_RECOVERY_STALL_MS = 4_000;
 const STREAM_RECOVERY_MIN_INTERVAL_MS = 8_000;
+const COMPLETED_TURN_FULL_REFRESH_DELAY_MS = 3_000;
+const POST_TURN_GIT_STATUS_POLL_DELAYS_MS = [
+  2_000, 5_000, 8_000, 10_000,
+] as const;
 
 const emptySubscribe = () => () => {};
 
@@ -1931,7 +1935,7 @@ export function SessionChatContent({
       pendingOptimisticTitleChatIdRef.current = null;
     }
 
-    let followUpTimeout: ReturnType<typeof setTimeout> | null = null;
+    const followUpTimeouts: ReturnType<typeof setTimeout>[] = [];
     if (
       (wasStreaming || wasSubmitted) &&
       status === "ready" &&
@@ -1945,20 +1949,35 @@ export function SessionChatContent({
         await checkBranchAndPr().catch(() => undefined);
       };
 
+      const scheduleFollowUpRefresh = (
+        callback: () => void,
+        delayMs: number,
+      ) => {
+        followUpTimeouts.push(setTimeout(callback, delayMs));
+      };
+
       void refreshCompletedTurnState();
       void requestMarkChatRead("force");
       void refreshChats();
 
       if (session.cloneUrl && session.repoOwner && session.repoName) {
-        followUpTimeout = setTimeout(() => {
+        scheduleFollowUpRefresh(() => {
           void refreshCompletedTurnState();
-        }, 3000);
+        }, COMPLETED_TURN_FULL_REFRESH_DELAY_MS);
+      }
+
+      if (session.cloneUrl) {
+        for (const delayMs of POST_TURN_GIT_STATUS_POLL_DELAYS_MS) {
+          scheduleFollowUpRefresh(() => {
+            void refreshGitStatus().catch(() => undefined);
+          }, delayMs);
+        }
       }
     }
 
     return () => {
-      if (followUpTimeout !== null) {
-        clearTimeout(followUpTimeout);
+      for (const timeout of followUpTimeouts) {
+        clearTimeout(timeout);
       }
     };
   }, [
