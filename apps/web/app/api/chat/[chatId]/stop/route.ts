@@ -5,7 +5,8 @@ import {
 } from "@/app/api/chat/_lib/chat-context";
 import type { WebAgentUIMessage } from "@/app/types";
 import {
-  upsertChatMessageScoped,
+  compareAndSetChatActiveStreamId,
+  createChatMessageIfNotExists,
   updateChatAssistantActivity,
 } from "@/lib/db/sessions";
 
@@ -60,6 +61,20 @@ export async function POST(request: Request, context: RouteContext) {
     );
   }
 
+  // Clear activeStreamId immediately so a follow-up prompt does not
+  // reconnect to the cancelled (but not yet terminal) workflow.
+  // Uses CAS to avoid clobbering a newer workflow that raced in.
+  await compareAndSetChatActiveStreamId(
+    chatId,
+    chat.activeStreamId,
+    null,
+  ).catch((err: unknown) => {
+    console.error(
+      `[workflow] Failed to clear activeStreamId for chat ${chatId}:`,
+      err,
+    );
+  });
+
   return Response.json({ success: true });
 }
 
@@ -67,13 +82,16 @@ async function persistAssistantSnapshot(
   chatId: string,
   message: WebAgentUIMessage,
 ): Promise<void> {
-  const result = await upsertChatMessageScoped({
+  // Insert-only: if the workflow already persisted a fuller message, this
+  // is a no-op. Avoids overwriting server-side content with a stale
+  // (throttled) client snapshot.
+  const created = await createChatMessageIfNotExists({
     id: message.id,
     chatId,
     role: "assistant",
     parts: message,
   });
-  if (result.status === "inserted") {
+  if (created) {
     await updateChatAssistantActivity(chatId, new Date());
   }
 }

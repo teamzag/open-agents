@@ -84,6 +84,7 @@ mock.module("@open-harness/sandbox", () => ({
 }));
 
 mock.module("@/lib/db/sessions", () => ({
+  compareAndSetChatActiveStreamId: async () => true,
   createChatMessageIfNotExists: async () => undefined,
   getChatById: async () => chatRecord,
   getSessionById: async () => sessionRecord,

@@ -2,11 +2,11 @@ import { createUIMessageStreamResponse, type InferUIMessageChunk } from "ai";
 import { start } from "workflow/api";
 import type { WebAgentUIMessage } from "@/app/types";
 import {
+  compareAndSetChatActiveStreamId,
   createChatMessageIfNotExists,
   isFirstChatMessage,
   touchChat,
   updateChat,
-  updateChatActiveStreamId,
   updateSession,
 } from "@/lib/db/sessions";
 import { getUserPreferences } from "@/lib/db/user-preferences";
@@ -145,6 +145,7 @@ export async function POST(req: Request) {
       sessionId,
       userId,
       modelId: mainModelSelection.id,
+      maxSteps: 250,
       agentOptions: {
         sandbox: {
           state: activeSandboxState,
@@ -169,8 +170,27 @@ export async function POST(req: Request) {
     },
   ]);
 
-  // Store the workflow run ID so clients can reconnect and stop.
-  await updateChatActiveStreamId(chatId, run.runId);
+  // Atomically claim the activeStreamId slot. If another request raced us and
+  // already set it, cancel the workflow we just started and reconnect instead.
+  const claimed = await compareAndSetChatActiveStreamId(
+    chatId,
+    null,
+    run.runId,
+  );
+
+  if (!claimed) {
+    // Another request won the race — cancel our duplicate workflow.
+    try {
+      const { getRun } = await import("workflow/api");
+      getRun(run.runId).cancel();
+    } catch {
+      // Best-effort cleanup.
+    }
+    return Response.json(
+      { error: "Another workflow is already running for this chat" },
+      { status: 409 },
+    );
+  }
 
   const stream = createCancelableReadableStream(
     run.getReadable<WebAgentUIMessageChunk>(),

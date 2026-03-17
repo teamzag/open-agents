@@ -112,85 +112,89 @@ export async function runAgentWorkflow(options: Options) {
   let wasAborted = false;
   let totalUsage: LanguageModelUsage | undefined;
 
-  for (
-    let step = 0;
-    options.maxSteps === undefined || step < options.maxSteps;
-    step++
-  ) {
-    const result = await runAgentStep(
-      modelMessages,
-      originalMessagesForStep,
-      assistantId,
-      writable,
-      workflowRunId,
-      options.agentOptions,
+  try {
+    for (
+      let step = 0;
+      options.maxSteps === undefined || step < options.maxSteps;
+      step++
+    ) {
+      const result = await runAgentStep(
+        modelMessages,
+        originalMessagesForStep,
+        assistantId,
+        writable,
+        workflowRunId,
+        options.agentOptions,
+      );
+
+      pendingAssistantResponse =
+        result.responseMessage ?? pendingAssistantResponse;
+      originalMessagesForStep = [pendingAssistantResponse];
+      modelMessages.push(...result.responseMessages);
+      wasAborted = wasAborted || result.stepWasAborted;
+
+      if (result.stepUsage) {
+        totalUsage = totalUsage
+          ? await addUsage(totalUsage, result.stepUsage)
+          : result.stepUsage;
+      }
+
+      if (
+        result.finishReason !== "tool-calls" ||
+        shouldPauseForToolInteraction(
+          result.responseMessage?.parts ?? pendingAssistantResponse.parts,
+        )
+      ) {
+        break;
+      }
+    }
+
+    // Always persist the assistant message — even on abort, save content
+    // from completed steps so mid-stream output is not lost.
+    await persistAssistantMessage(options.chatId, pendingAssistantResponse);
+
+    await recordWorkflowUsage(
+      options.userId,
+      options.modelId,
+      totalUsage,
+      pendingAssistantResponse,
     );
 
-    pendingAssistantResponse =
-      result.responseMessage ?? pendingAssistantResponse;
-    originalMessagesForStep = [pendingAssistantResponse];
-    modelMessages.push(...result.responseMessages);
-    wasAborted = wasAborted || result.stepWasAborted;
-
-    if (result.stepUsage) {
-      totalUsage = totalUsage
-        ? await addUsage(totalUsage, result.stepUsage)
-        : result.stepUsage;
+    // Persist the sandbox state so lifecycle timers stay accurate.
+    const sandboxState = options.agentOptions.sandbox?.state;
+    if (sandboxState) {
+      await persistSandboxState(options.sessionId, sandboxState);
     }
 
+    // Auto-commit if enabled and the agent finished naturally.
     if (
-      result.finishReason !== "tool-calls" ||
-      shouldPauseForToolInteraction(
-        result.responseMessage?.parts ?? pendingAssistantResponse.parts,
-      )
+      !wasAborted &&
+      options.autoCommitEnabled &&
+      sandboxState &&
+      options.repoOwner &&
+      options.repoName
     ) {
-      break;
+      await runAutoCommitStep({
+        userId: options.userId,
+        sessionId: options.sessionId,
+        sessionTitle: options.sessionTitle ?? "",
+        repoOwner: options.repoOwner,
+        repoName: options.repoName,
+        sandboxState,
+      });
     }
+
+    // Refresh the diff cache so the UI shows current changes.
+    if (sandboxState) {
+      await refreshDiffCache(options.sessionId, sandboxState);
+    }
+  } finally {
+    // Always clear the active stream and close, even on unexpected errors,
+    // so the chat is never permanently marked as streaming.
+    await clearActiveStream(options.chatId, workflowRunId);
+    await sendFinish(writable);
+    await closeStream(writable);
   }
-
-  // Always persist the assistant message — even on abort, save content
-  // from completed steps so mid-stream output is not lost.
-  await persistAssistantMessage(options.chatId, pendingAssistantResponse);
-
-  await recordWorkflowUsage(
-    options.userId,
-    options.modelId,
-    totalUsage,
-    pendingAssistantResponse,
-  );
-
-  // Persist the sandbox state so lifecycle timers stay accurate.
-  const sandboxState = options.agentOptions.sandbox?.state;
-  if (sandboxState) {
-    await persistSandboxState(options.sessionId, sandboxState);
-  }
-
-  // Auto-commit if enabled and the agent finished naturally.
-  if (
-    !wasAborted &&
-    options.autoCommitEnabled &&
-    sandboxState &&
-    options.repoOwner &&
-    options.repoName
-  ) {
-    await runAutoCommitStep({
-      userId: options.userId,
-      sessionId: options.sessionId,
-      sessionTitle: options.sessionTitle ?? "",
-      repoOwner: options.repoOwner,
-      repoName: options.repoName,
-      sandboxState,
-    });
-  }
-
-  // Refresh the diff cache so the UI shows current changes.
-  if (sandboxState) {
-    await refreshDiffCache(options.sessionId, sandboxState);
-  }
-
-  await clearActiveStream(options.chatId, workflowRunId);
-  await sendFinish(writable);
-  await closeStream(writable);
 }
 
 const runAgentStep = async (
