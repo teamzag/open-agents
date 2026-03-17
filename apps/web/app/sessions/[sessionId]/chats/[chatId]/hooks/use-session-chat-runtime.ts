@@ -166,14 +166,10 @@ export function useSessionChatRuntime({
 
   const stopChatStream = useCallback(() => {
     userStoppedRef.current = true;
-    workflowRunIdRef.current = null;
 
-    // Request server-side cancellation, then tear down local transport state.
-    // We intentionally do not await this request so UI stop stays instant.
-    void fetch(`/api/chat/${chatId}/stop`, {
-      method: "POST",
-    }).catch(() => {});
-
+    // Abort the active client connection only. The workflow keeps running so
+    // it can finish and persist its response, matching the durable reference
+    // implementation instead of dropping the assistant message on stop.
     void chatInstance.stop();
     abortChatInstanceTransport(chatId);
   }, [chatId, chatInstance]);
@@ -263,9 +259,8 @@ export function useSessionChatRuntime({
   // connections so unmounted routes do not keep consuming client resources.
   //
   // Important: do NOT call chatInstance.stop() during route teardown.
-  // stop() publishes a server stop signal; when users leave the page during
-  // long-running tool/subagent work that would cancel generation and drop
-  // persistence. We only stop explicitly via the UI stop action.
+  // Leaving the page should only tear down local listeners; the workflow must
+  // keep running so it can be resumed or persist its finished response.
   useEffect(() => {
     return () => {
       cleanupChatRouteOnUnmount(chatId);
