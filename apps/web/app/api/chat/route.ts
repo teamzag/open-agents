@@ -66,6 +66,28 @@ export async function POST(req: Request) {
     throw new Error("Sandbox not initialized");
   }
 
+  // Guard: if a workflow is already running for this chat, reconnect to it
+  // instead of starting a duplicate. This prevents auto-submit from spawning
+  // parallel workflows when the client sees completed tool calls mid-loop.
+  if (chat.activeStreamId) {
+    try {
+      const { getRun } = await import("workflow/api");
+      const existingRun = getRun(chat.activeStreamId);
+      const status = await existingRun.status;
+      if (status === "running" || status === "pending") {
+        const stream = createCancelableReadableStream(
+          existingRun.getReadable<WebAgentUIMessageChunk>(),
+        );
+        return createUIMessageStreamResponse({
+          stream,
+          headers: { "x-workflow-run-id": chat.activeStreamId },
+        });
+      }
+    } catch {
+      // Workflow not found or inaccessible — proceed with new workflow.
+    }
+  }
+
   const requestStartedAt = new Date();
 
   // Refresh lifecycle activity so long-running responses don't look idle.
