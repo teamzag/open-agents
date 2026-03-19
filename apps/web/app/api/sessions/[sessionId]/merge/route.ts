@@ -197,8 +197,9 @@ export async function POST(req: Request, context: RouteContext) {
     );
 
     if (!parsedBody.force || nonBypassableReasons.length > 0) {
-      const reasons =
-        parsedBody.force ? nonBypassableReasons : readiness.reasons;
+      const reasons = parsedBody.force
+        ? nonBypassableReasons
+        : readiness.reasons;
       return Response.json(
         {
           error: reasons.join(". "),
