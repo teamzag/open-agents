@@ -2549,17 +2549,6 @@ export function SessionChatContent({
           <div className="flex items-center gap-1 xl:gap-2">
             {/* Overflow menu + primary git action */}
             <div className="flex items-center gap-1">
-              {canOpenTerminal && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8 w-8 px-0 xl:w-auto xl:px-3"
-                  onClick={() => setTerminalPanelOpen(true)}
-                >
-                  <Terminal className="h-4 w-4 xl:mr-2" />
-                  <span className="hidden xl:inline">Terminal</span>
-                </Button>
-              )}
               {hasRepo ? (
                 hasExistingPr ? (
                   showCommitAction ? (
