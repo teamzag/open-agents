@@ -28,8 +28,60 @@ const TERMINAL_PAGE_HTML = `<!doctype html>
         color: #fafafa;
       }
 
-      #terminal {
+      .shell {
         min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        padding: 12px 16px;
+        background: rgba(9, 9, 11, 0.96);
+        backdrop-filter: blur(12px);
+      }
+
+      .title {
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: 0.01em;
+      }
+
+      .status {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        color: #a1a1aa;
+        font-size: 12px;
+      }
+
+      .status::before {
+        content: "";
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        background: #f59e0b;
+        box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.2);
+      }
+
+      .status[data-state="connected"]::before {
+        background: #22c55e;
+        box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.2);
+      }
+
+      .status[data-state="error"]::before,
+      .status[data-state="disconnected"]::before {
+        background: #f43f5e;
+        box-shadow: 0 0 0 2px rgba(244, 63, 94, 0.2);
+      }
+
+      #terminal {
+        flex: 1;
+        min-height: 0;
         padding: 12px;
         overflow: hidden;
       }
@@ -40,24 +92,27 @@ const TERMINAL_PAGE_HTML = `<!doctype html>
     </style>
   </head>
   <body>
-    <div id="terminal"></div>
+    <div class="shell">
+      <div class="toolbar">
+        <div class="title">Session Terminal</div>
+        <div class="status" data-state="connecting" id="terminal-status">
+          Connecting…
+        </div>
+      </div>
+      <div id="terminal"></div>
+    </div>
 
     <script type="module">
       import { FitAddon, Terminal, init } from "/dist/ghostty-web.js";
 
+      const statusElement = document.getElementById("terminal-status");
       const terminalContainer = document.getElementById("terminal");
       const hashParams = new URLSearchParams(window.location.hash.slice(1));
       const token = hashParams.get("token");
 
       function setStatus(label, state) {
-        window.parent?.postMessage(
-          {
-            source: "open-harness-terminal",
-            label,
-            state,
-          },
-          "*",
-        );
+        statusElement.textContent = label;
+        statusElement.dataset.state = state;
       }
 
       if (!token) {

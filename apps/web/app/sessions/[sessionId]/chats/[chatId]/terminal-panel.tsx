@@ -1,7 +1,7 @@
 "use client";
 
 import { Loader2 } from "lucide-react";
-import { type RefObject, useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import type { SessionTerminalLaunchResponse } from "@/app/api/sessions/[sessionId]/terminal/route";
 
 export const TERMINAL_HEARTBEAT_INTERVAL_MS = 60_000;
@@ -23,40 +23,7 @@ type TerminalPanelState =
       message: string;
     };
 
-export type TerminalConnectionState = {
-  state: "connecting" | "connected" | "error" | "disconnected";
-  label: string;
-};
-
-interface TerminalStatusMessage extends TerminalConnectionState {
-  source: "open-harness-terminal";
-}
-
-function isTerminalStatusMessage(
-  value: unknown,
-): value is TerminalStatusMessage {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-
-  const message = value as Partial<TerminalStatusMessage>;
-  return (
-    message.source === "open-harness-terminal" &&
-    typeof message.label === "string" &&
-    (message.state === "connecting" ||
-      message.state === "connected" ||
-      message.state === "error" ||
-      message.state === "disconnected")
-  );
-}
-
-export function TerminalPanelView({
-  iframeRef,
-  state,
-}: {
-  state: TerminalPanelState;
-  iframeRef?: RefObject<HTMLIFrameElement | null>;
-}) {
+export function TerminalPanelView({ state }: { state: TerminalPanelState }) {
   if (state.status === "loading") {
     return (
       <div className="flex h-full min-h-[320px] items-center justify-center gap-3 text-sm text-muted-foreground">
@@ -94,7 +61,6 @@ export function TerminalPanelView({
 
   return (
     <iframe
-      ref={iframeRef}
       className="h-full min-h-0 w-full flex-1 border-0 bg-background"
       sandbox="allow-popups allow-scripts"
       src={state.terminalUrl}
@@ -118,15 +84,12 @@ async function parseLaunchError(response: Response): Promise<string> {
 
 export function TerminalPanel({
   sessionId,
-  onTerminalStatusChange,
   onTerminalUrlChange,
 }: {
   sessionId: string;
-  onTerminalStatusChange?: (status: TerminalConnectionState | null) => void;
   onTerminalUrlChange?: (terminalUrl: string | null) => void;
 }) {
   const [state, setState] = useState<TerminalPanelState>({ status: "loading" });
-  const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const readyTerminalUrl = state.status === "ready" ? state.terminalUrl : null;
 
   useEffect(() => {
@@ -195,69 +158,14 @@ export function TerminalPanel({
   }, [onTerminalUrlChange, readyTerminalUrl]);
 
   useEffect(() => {
-    if (!onTerminalStatusChange) {
-      return;
-    }
-
-    if (state.status === "loading") {
-      onTerminalStatusChange({ label: "Launching…", state: "connecting" });
-      return;
-    }
-
-    if (state.status === "error") {
-      onTerminalStatusChange({ label: "Failed", state: "error" });
-      return;
-    }
-
-    if (state.status === "requires_restart") {
-      onTerminalStatusChange({ label: "Restart required", state: "error" });
-      return;
-    }
-
-    onTerminalStatusChange({ label: "Connecting…", state: "connecting" });
-  }, [onTerminalStatusChange, state.status]);
-
-  useEffect(() => {
-    if (state.status !== "ready" || !onTerminalStatusChange) {
-      return;
-    }
-
-    const handleMessage = (event: MessageEvent) => {
-      if (!isTerminalStatusMessage(event.data)) {
-        return;
-      }
-
-      if (!iframeRef.current?.contentWindow) {
-        return;
-      }
-
-      if (event.source !== iframeRef.current.contentWindow) {
-        return;
-      }
-
-      onTerminalStatusChange({
-        label: event.data.label,
-        state: event.data.state,
-      });
-    };
-
-    window.addEventListener("message", handleMessage);
-
-    return () => {
-      window.removeEventListener("message", handleMessage);
-    };
-  }, [onTerminalStatusChange, state.status]);
-
-  useEffect(() => {
-    if (!onTerminalStatusChange && !onTerminalUrlChange) {
+    if (!onTerminalUrlChange) {
       return;
     }
 
     return () => {
-      onTerminalStatusChange?.(null);
-      onTerminalUrlChange?.(null);
+      onTerminalUrlChange(null);
     };
-  }, [onTerminalStatusChange, onTerminalUrlChange]);
+  }, [onTerminalUrlChange]);
 
   useEffect(() => {
     if (state.status !== "ready") {
@@ -284,5 +192,5 @@ export function TerminalPanel({
     };
   }, [sessionId, state.status]);
 
-  return <TerminalPanelView iframeRef={iframeRef} state={state} />;
+  return <TerminalPanelView state={state} />;
 }
