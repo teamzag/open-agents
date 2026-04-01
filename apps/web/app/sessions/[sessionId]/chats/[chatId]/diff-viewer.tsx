@@ -8,7 +8,7 @@ import {
   Loader2,
   RefreshCw,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { DiffFile } from "@/app/api/sessions/[sessionId]/diff/route";
 import { Button } from "@/components/ui/button";
 import {
@@ -221,6 +221,28 @@ export function DiffViewer({ open, onOpenChange }: DiffViewerProps) {
   const { preferences } = useUserPreferences();
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
   const [diffStyle, setDiffStyle] = useState<DiffStyle>("unified");
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  // Radix Dialog wraps RemoveScroll around the Overlay (not the Content).
+  // The Content is passed as a "shard", so react-remove-scroll's document-level
+  // wheel handler evaluates whether to allow or block the scroll.  When the
+  // wheel event originates from inside a @pierre/diffs Shadow DOM element, the
+  // retargeted event.target can confuse the scroll-allowance heuristic, causing
+  // it to call preventDefault() and block vertical scrolling until the user
+  // clicks inside the panel.  Stopping native propagation on the scroll
+  // container prevents the event from reaching react-remove-scroll's document
+  // handler, letting the browser handle scrolling normally.
+  useEffect(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+
+    const stopWheelPropagation = (e: WheelEvent) => {
+      e.stopPropagation();
+    };
+
+    el.addEventListener("wheel", stopWheelPropagation);
+    return () => el.removeEventListener("wheel", stopWheelPropagation);
+  }, []);
 
   // Show stale indicator if sandbox is offline (even if data came from a live fetch earlier)
   const showStaleIndicator = !sandboxInfo && diff !== null;
@@ -355,6 +377,7 @@ export function DiffViewer({ open, onOpenChange }: DiffViewerProps) {
 
         {/* Content */}
         <div
+          ref={scrollContainerRef}
           className={cn(
             "min-h-0 flex-1 overflow-y-auto",
             showStaleIndicator && "opacity-90",
