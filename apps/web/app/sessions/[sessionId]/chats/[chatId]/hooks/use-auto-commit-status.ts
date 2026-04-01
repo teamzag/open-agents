@@ -4,8 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { SessionGitStatus } from "@/hooks/use-session-git-status";
 import type { SessionPostTurnPhase } from "@/lib/session/post-turn-phase";
 
-const POST_TURN_REFRESH_DELAYS_MS = [1500, 4000, 8000] as const;
-const POST_TURN_OPTIMISTIC_TIMEOUT_MS = 10_000;
+const POST_TURN_REFRESH_INTERVAL_MS = 2_000;
+const POST_TURN_OPTIMISTIC_TIMEOUT_MS = 8_000;
 
 type UseAutoCommitStatusParams = {
   autoCommitEnabled: boolean;
@@ -17,7 +17,6 @@ type UseAutoCommitStatusParams = {
 };
 
 type ReconcileOptimisticPostTurnPhaseParams = {
-  autoCreatePrEnabled: boolean;
   sessionPostTurnPhase: SessionPostTurnPhase | null | undefined;
   optimisticPhase: SessionPostTurnPhase | null;
   hasExistingPr: boolean;
@@ -26,7 +25,6 @@ type ReconcileOptimisticPostTurnPhaseParams = {
 };
 
 export function reconcileOptimisticPostTurnPhase({
-  autoCreatePrEnabled,
   sessionPostTurnPhase,
   optimisticPhase,
   hasExistingPr,
@@ -38,19 +36,11 @@ export function reconcileOptimisticPostTurnPhase({
   }
 
   if (optimisticPhase === "auto_commit") {
-    if (hasUncommittedChanges || hasUnpushedCommits) {
-      return optimisticPhase;
-    }
-
-    if (hasExistingPr || !autoCreatePrEnabled) {
-      return null;
-    }
-
-    return "auto_pr";
+    return hasUncommittedChanges || hasUnpushedCommits ? optimisticPhase : null;
   }
 
-  if (optimisticPhase === "auto_pr" && hasExistingPr) {
-    return null;
+  if (optimisticPhase === "auto_pr") {
+    return hasExistingPr ? null : optimisticPhase;
   }
 
   return optimisticPhase;
@@ -65,7 +55,7 @@ export function reconcileOptimisticPostTurnPhase({
  */
 export function useAutoCommitStatus({
   autoCommitEnabled,
-  autoCreatePrEnabled,
+  autoCreatePrEnabled: _autoCreatePrEnabled,
   sessionPostTurnPhase,
   gitStatus,
   hasExistingPr,
@@ -111,7 +101,6 @@ export function useAutoCommitStatus({
 
   useEffect(() => {
     const nextOptimisticPhase = reconcileOptimisticPostTurnPhase({
-      autoCreatePrEnabled,
       sessionPostTurnPhase,
       optimisticPhase,
       hasExistingPr,
@@ -129,7 +118,6 @@ export function useAutoCommitStatus({
 
     setOptimisticPhase(nextOptimisticPhase);
   }, [
-    autoCreatePrEnabled,
     sessionPostTurnPhase,
     optimisticPhase,
     hasExistingPr,
@@ -142,11 +130,11 @@ export function useAutoCommitStatus({
       return;
     }
 
-    const refreshTimeouts = POST_TURN_REFRESH_DELAYS_MS.map((delay) =>
-      setTimeout(() => {
-        refreshRef.current();
-      }, delay),
-    );
+    void refreshRef.current();
+
+    const refreshInterval = setInterval(() => {
+      refreshRef.current();
+    }, POST_TURN_REFRESH_INTERVAL_MS);
 
     const fallbackTimeout = setTimeout(() => {
       if (!sessionPostTurnPhase) {
@@ -156,9 +144,7 @@ export function useAutoCommitStatus({
     }, POST_TURN_OPTIMISTIC_TIMEOUT_MS);
 
     return () => {
-      for (const timeout of refreshTimeouts) {
-        clearTimeout(timeout);
-      }
+      clearInterval(refreshInterval);
       clearTimeout(fallbackTimeout);
     };
   }, [activePhase, sessionPostTurnPhase]);

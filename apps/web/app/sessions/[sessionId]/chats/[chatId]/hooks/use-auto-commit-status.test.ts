@@ -2,10 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { reconcileOptimisticPostTurnPhase } from "./use-auto-commit-status";
 
 describe("reconcileOptimisticPostTurnPhase", () => {
-  test("clears optimistic auto-commit once git work is done when auto PR is disabled", () => {
+  test("clears optimistic auto-commit once git work is done", () => {
     expect(
       reconcileOptimisticPostTurnPhase({
-        autoCreatePrEnabled: false,
         sessionPostTurnPhase: null,
         optimisticPhase: "auto_commit",
         hasExistingPr: false,
@@ -15,23 +14,21 @@ describe("reconcileOptimisticPostTurnPhase", () => {
     ).toBeNull();
   });
 
-  test("advances optimistic auto-commit to auto-pr when commit finishes and PR creation is enabled", () => {
+  test("keeps optimistic auto-commit while git work is still pending", () => {
     expect(
       reconcileOptimisticPostTurnPhase({
-        autoCreatePrEnabled: true,
         sessionPostTurnPhase: null,
         optimisticPhase: "auto_commit",
         hasExistingPr: false,
-        hasUncommittedChanges: false,
+        hasUncommittedChanges: true,
         hasUnpushedCommits: false,
       }),
-    ).toBe("auto_pr");
+    ).toBe("auto_commit");
   });
 
   test("clears optimistic auto-pr once the PR appears", () => {
     expect(
       reconcileOptimisticPostTurnPhase({
-        autoCreatePrEnabled: true,
         sessionPostTurnPhase: null,
         optimisticPhase: "auto_pr",
         hasExistingPr: true,
