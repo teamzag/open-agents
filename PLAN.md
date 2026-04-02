@@ -1,110 +1,140 @@
-Summary: Migrate the sandbox stack from v1 ephemeral sandbox IDs plus snapshot-driven restores to v2 persistent named sandboxes. New sandboxes should use the deterministic name `session_${sessionId}`, persist that value in `sandboxState.sandboxId`, and keep it stable for the life of the session while using `stop()` (not `snapshot()`) for normal hibernation.
+Summary: Replace the workflow-hosted Open Harness agent with a sandbox-resident agent host that embeds external coding-agent runtimes. Make the agent runtime a chat-level choice (`opencode`, `claude`, `codex`), keep sandbox/session orchestration in the web app, and use Next API routes only as authenticated proxy + persistence layers.
 
 Context: Key findings from exploration -- existing patterns, relevant files, constraints
 
-- The sandbox package is still on `@vercel/sandbox@^1.3.0` and the provider layer is built around ephemeral `sandboxId` reconnects and `snapshotId` restores.
-  - `packages/sandbox/package.json`
-  - `packages/sandbox/vercel/state.ts`
-  - `packages/sandbox/vercel/connect.ts`
-  - `packages/sandbox/vercel/sandbox.ts`
-- Current state persistence stores runtime identity in `sandboxState.sandboxId` and clears it on stop/hibernate/archive. Hibernation is implemented by taking a snapshot, storing `snapshotUrl`, and replacing runtime state with `{ type: "vercel" }`.
-  - `apps/web/lib/sandbox/lifecycle.ts`
-  - `apps/web/lib/sandbox/archive-session.ts`
-  - `apps/web/lib/sandbox/utils.ts`
-  - `apps/web/app/api/sandbox/snapshot/route.ts`
-- Many API routes treat “sandbox is usable” as “`sandboxState.sandboxId` is present”, and on unavailability they clear the sandbox state completely. That assumption breaks with persistent named sandboxes because the stable sandbox identity should remain even after `stop()`.
-  - `apps/web/app/api/sandbox/reconnect/route.ts`
-  - `apps/web/app/api/sandbox/status/route.ts`
-  - `apps/web/app/api/sessions/[sessionId]/files/route.ts`
-  - `apps/web/app/api/sessions/[sessionId]/files/content/route.ts`
-  - `apps/web/app/api/sessions/[sessionId]/skills/route.ts`
-  - `apps/web/app/api/sessions/[sessionId]/diff/route.ts`
-- The DB schema already has a flexible `sandboxState` JSON column plus legacy snapshot fields. We can likely avoid a SQL migration if we keep using `sandboxState.sandboxId` as the persisted identifier and reserve `snapshotUrl` for legacy migration / optional backup only.
+- Current chat execution is split across `apps/web/app/api/chat/route.ts`, `apps/web/app/workflows/chat.ts`, and `apps/web/app/workflows/chat-post-finish.ts`. The agent loop runs in Vercel functions/workflows, while each tool call reconnects back into the sandbox through `@open-harness/sandbox`.
+- The web UI is tightly coupled to the custom AI SDK agent:
+  - `apps/web/app/config.ts` hardcodes `webAgent = openHarnessAgent`
+  - `apps/web/app/types.ts` derives all chat message/tool types from that agent
+  - `apps/web/app/sessions/[sessionId]/chats/[chatId]/hooks/use-session-chat-runtime.ts` uses `@ai-sdk/react` `useChat`
+  - `apps/web/app/sessions/[sessionId]/chats/[chatId]/session-chat-content.tsx` renders AI SDK tool parts directly
+- Session and sandbox ownership boundaries are already useful and should stay:
+  - sandbox lifecycle lives on `sessions.sandboxState`
+  - conversation threads live in `chats`
+  - persisted message history already lives in `chat_messages`
+- Sandbox process-management prior art already exists in `apps/web/app/api/sessions/[sessionId]/dev-server/route.ts`. The sandbox abstraction supports detached background commands via `execDetached`, which is the right seam for a long-running host process inside the sandbox.
+- Current defaults/preferences already thread model selection through chat creation:
   - `apps/web/lib/db/schema.ts`
-  - `apps/web/lib/db/sessions.ts`
-- There is a high-risk direct REST optimization path that uses internal `@vercel/sandbox/dist/*` APIs and passes `sandboxId` everywhere. Since we are comfortable dropping it, the migration should explicitly remove/bypass this path and standardize on the documented SDK methods only.
-  - `packages/sandbox/vercel/direct.ts`
-  - `packages/sandbox/vercel/direct-operations.ts`
+  - `apps/web/lib/db/user-preferences.ts`
+  - `apps/web/app/api/sessions/[sessionId]/chats/route.ts`
+  - `apps/web/app/[username]/[repo]/page.tsx`
+  This same path is the natural place to introduce a default agent runtime.
+- SDK research:
+  - OpenCode is the best first target because it already has a headless server/client model, sessions, agent switching, permissions, config files, and SSE/event APIs.
+  - Claude Agent SDK is the next best fit because it already supports built-in coding tools, `canUseTool` for approvals/questions, session persistence, `resume`, and filesystem settings via `settingSources: ["project"]`.
+  - Codex SDK is the thinnest surface: it has durable threads and `runStreamed()` events, but it looks more like a CLI wrapper than a complete multi-user server, so the adapter layer will need to do more work.
+- Important constraint: these runtimes want local filesystem/process access, so they should be treated as first-class sandbox workloads. Do not wrap them inside the existing `ToolLoopAgent` abstraction.
+
+System Impact: How the change affects source of truth, data flow, lifecycle, and dependent parts of the system
+
+- What is changing:
+  - The agent execution layer moves from Vercel workflows + `packages/agent` to a sandbox-local host process.
+  - The web app becomes a control plane: auth, session ownership, persistence, proxy streaming, runtime selection, and sandbox lifecycle.
+- Source of truth before:
+  - in-progress execution: Vercel workflow run IDs in `chats.activeStreamId`
+  - conversation state: AI SDK messages derived from `webAgent`
+  - tool execution: custom tools reconnecting into the sandbox
+- Source of truth after:
+  - in-progress execution: sandbox-local host run state
+  - persisted conversation state: web DB (`chats`, `chat_messages`) using a provider-neutral message/event schema
+  - provider continuation state: chat-level runtime state (`agentRuntime` + provider session/thread metadata)
+- New invariants:
+  - A chat is bound to exactly one runtime after its first provider session is created.
+  - Switching runtimes happens by creating a new chat (or empty chat) in the same repo/session, not by hot-swapping a live provider thread.
+  - The sandbox host is idempotently bootstrapped per sandbox/session and protected by a deterministic session-scoped auth token.
+  - The web app never runs the coding-agent loop itself; it only proxies and persists.
+- Dependent flows that must move with this decision:
+  - stop/reconnect streaming
+  - approval/question handling
+  - usage capture
+  - auto-commit / auto-PR post-run hooks
+  - chat hydration and refresh APIs
+  - user preferences and session starter defaults
+- Adjacent simplifications unlocked by this design:
+  - `packages/agent` stops being the core runtime path
+  - `apps/web/app/workflows/chat.ts` and `apps/web/app/config.ts` can leave the chat critical path
+  - custom subagent/tool typing can be replaced with a runtime-neutral protocol instead of forcing all providers through AI SDK UI message types
 
 Approach: High-level design decision and why
 
-- Use `session_${sessionId}` (underscore, not colon) as the canonical sandbox name.
-- Keep the existing `sandboxState.sandboxId` field name for compatibility, but change its meaning from “ephemeral VM id” to “persistent sandbox name”.
-- Split two concepts that are currently conflated:
-  1. persistent sandbox identity (the named sandbox, stable across stops)
-  2. active session/runtime availability (whether a VM session is currently running)
-- For new v2 sandboxes:
-  - create once with `name: session_${sessionId}`
-  - persist that name in `sandboxState.sandboxId`
-  - on inactivity/archive/manual pause, call `stop()` and keep the stable sandbox identity in DB
-  - on resume, re-open by name and resume the stopped sandbox instead of creating a new sandbox from a snapshot
-- For legacy v1 sandboxes already in the database:
-  - if already archived/hibernated with `snapshotUrl`, resume into a new named sandbox `session_${sessionId}` on first restore
-  - if currently active with an old ephemeral/backfilled id, keep working until the next pause/archive; at that point snapshot the legacy sandbox, persist the deterministic name, and restore into the new named sandbox on next resume
-  - after successful migration from a legacy sandbox to the deterministic named sandbox, delete the obsolete legacy sandbox to avoid orphaned resources
-- Keep the existing restore endpoint shape as the explicit “resume sandbox” entrypoint so the UI can stay mostly unchanged:
-  - legacy sessions: restore from `snapshotUrl` into the named sandbox
-  - v2 sessions: resume the named sandbox by name
-- First implementation should prefer correctness over low-level optimization: remove the direct REST optimization entirely for this migration and route reconnect/resume/file operations through the documented SDK path.
+- Build a new workspace package, `packages/agent-host`, that runs inside the sandbox as a long-lived HTTP/SSE service.
+- Give that host a provider adapter interface with three implementations:
+  - `opencode` (first/default)
+  - `claude`
+  - `codex`
+- Expose one normalized Open Harness protocol from the host: start/resume conversation, stream events, answer approval/question requests, abort runs, and list runtime metadata.
+- Keep the host stateless with respect to durable conversation history whenever possible:
+  - OpenCode sessions persist in OpenCode’s own local storage
+  - Claude sessions persist in `~/.claude/...`
+  - Codex threads persist in `~/.codex/sessions`
+  - the web DB stores only the chat/runtime mapping, live run pointer, pending user-input state, and rendered message history
+- Use OpenCode as the first runtime because it already matches the desired shape (server, sessions, agents, config, events). Land Claude next, then Codex after the common host/proxy protocol is proven.
+- Keep runtime choice on `chats`, not `sessions`, so users can try Claude/OpenCode/Codex against the same sandbox by opening separate chats.
+- Do not try to preserve the existing AI SDK-derived `WebAgentUIMessage` format. Introduce a provider-neutral message/event schema for the new platform and migrate the chat UI to it directly.
 
 Changes:
-- `packages/sandbox/package.json` - upgrade `@vercel/sandbox` to the beta version.
-- `packages/sandbox/vercel/state.ts` - redefine `sandboxId` semantics as persistent sandbox name; keep legacy snapshot support during migration.
-- `packages/sandbox/vercel/sandbox.ts` - switch create/get/connect logic from `sandboxId` to `name`, return the stable name from `getState()`, add explicit resume support, and expose `delete()` for legacy cleanup if needed.
-- `packages/sandbox/vercel/connect.ts` - connect/resume by name for v2 sandboxes, keep a legacy restore path for old snapshot-based sessions, and avoid name/ID confusion in state branching.
-- `packages/sandbox/vercel/direct.ts` - remove or bypass the direct REST optimization so the provider always uses the documented SDK path.
-- `packages/sandbox/vercel/direct-operations.ts` - delete or retire the unused low-level direct-operation helpers that depend on ephemeral ids.
-- `apps/web/lib/sandbox/utils.ts` - replace the current “runtime state exists iff sandboxId exists” helpers with separate helpers for persistent identity vs active runtime session; stop clearing sandbox identity on ordinary stop/unavailability.
-- `apps/web/lib/sandbox/lifecycle.ts` - for v2 sandboxes, hibernate with `stop()` and preserve `sandboxState`; keep legacy snapshot migration logic only for old sessions.
-- `apps/web/lib/sandbox/archive-session.ts` - archive by stopping persistent named sandboxes without clearing their identity; use snapshot+restore only as a migration bridge for legacy sessions.
-- `apps/web/app/api/sandbox/route.ts` - create named sandboxes with `session_${sessionId}`, update stop semantics, and persist the stable identifier immediately.
-- `apps/web/app/api/sandbox/reconnect/route.ts` - stop clearing stable identity on stopped sandboxes; report stopped/expired status while keeping the named sandbox reference.
-- `apps/web/app/api/sandbox/status/route.ts` - compute “active vs no active session” from lifecycle timing rather than presence/absence of `sandboxId`.
-- `apps/web/app/api/sandbox/snapshot/route.ts` - repurpose restore into a generic resume endpoint: restore legacy snapshots into named sandboxes, resume v2 named sandboxes directly, and keep snapshot creation only if still needed for manual backup / legacy migration.
-- `apps/web/app/api/sessions/[sessionId]/files/route.ts` - stop converting stopped persistent sandboxes into “missing sandbox” DB state.
-- `apps/web/app/api/sessions/[sessionId]/files/content/route.ts` - same as above.
-- `apps/web/app/api/sessions/[sessionId]/skills/route.ts` - same as above.
-- `apps/web/app/api/sessions/[sessionId]/diff/route.ts` - same as above.
-- `apps/web/lib/skills-cache.ts` - keep cache scoping keyed to the stable sandbox name; remove snapshot-based cache scope fallback once legacy migration is complete.
-- `apps/web/lib/db/sessions.ts` - add helpers for deterministic sandbox naming / legacy detection and normalize session records without changing SQL schema.
-- Tests to update alongside the implementation:
-  - `packages/sandbox/vercel/sandbox.test.ts`
-  - `packages/sandbox/vercel/direct.test.ts` (remove if the direct path is deleted, or replace with coverage that proves the SDK path is always used)
-  - `apps/web/lib/sandbox/lifecycle-evaluate.test.ts`
-  - `apps/web/lib/sandbox/archive-session.test.ts`
-  - `apps/web/app/api/sandbox/route.test.ts`
-  - `apps/web/app/api/sandbox/reconnect/route.test.ts`
-  - `apps/web/app/api/sandbox/status/route.test.ts`
-  - `apps/web/app/api/sandbox/snapshot/route.test.ts`
-  - `apps/web/app/api/sessions/[sessionId]/files/content/route.test.ts`
-  - `apps/web/app/api/sessions/[sessionId]/skills/route.test.ts`
+- `package.json` - add the new workspace package and wire new runtime SDK dependencies through the workspace.
+- `packages/agent-host/package.json` - new package for the sandbox-local host runtime.
+- `packages/agent-host/index.ts` - export the host bootstrap and shared protocol types.
+- `packages/agent-host/protocol.ts` - define the normalized runtime IDs, chat message/event schema, approval/question payloads, and run state contract shared by host + web app.
+- `packages/agent-host/server.ts` - implement the in-sandbox HTTP/SSE host process and run registry.
+- `packages/agent-host/providers/opencode.ts` - OpenCode adapter using its SDK/server/session/event APIs; make this the first/default runtime.
+- `packages/agent-host/providers/claude.ts` - Claude Agent SDK adapter using `query()`, `resume`, `canUseTool`, and project settings loading.
+- `packages/agent-host/providers/codex.ts` - Codex adapter using `startThread()`, `resumeThread()`, and `runStreamed()`.
+- `apps/web/lib/sandbox/config.ts` - reserve one routable sandbox port for the agent host in addition to existing dev-server preview ports.
+- `apps/web/lib/sandbox/agent-host.ts` - new server-only helper that ensures the host is running inside the sandbox, health-checks it, and signs proxy requests with a deterministic session token.
+- `apps/web/lib/db/schema.ts` - add `user_preferences.default_agent_runtime`; add `chats.agent_runtime` and `chats.agent_state` (provider session/thread metadata + pending input state). Reuse `chats.activeStreamId` as the live run pointer instead of adding a second run column.
+- `apps/web/lib/db/user-preferences.ts` - load/store the default runtime alongside the default model.
+- `apps/web/app/api/settings/preferences/route.ts` - expose runtime preference reads/writes.
+- `apps/web/hooks/use-user-preferences.ts` - surface the new default runtime to the client.
+- `apps/web/app/settings/preferences-section.tsx` - add the runtime selector and demote/remove settings that are specific to the legacy Open Harness subagent stack.
+- `apps/web/components/session-starter.tsx` - thread the selected runtime into session/chat creation defaults.
+- `apps/web/app/[username]/[repo]/page.tsx` - seed the initial chat with the chosen runtime.
+- `apps/web/app/api/sessions/[sessionId]/chats/route.ts` - create new chats with `agentRuntime` from user preferences.
+- `apps/web/app/sessions/[sessionId]/layout.tsx` and `apps/web/hooks/use-session-chats.ts` - preload/runtime-hydrate chat metadata with the selected runtime.
+- `apps/web/app/types.ts` - replace the AI SDK-derived `WebAgent*` exports with the new provider-neutral chat/runtime protocol types.
+- `apps/web/app/api/sessions/[sessionId]/chats/[chatId]/route.ts` - hydrate persisted chat history using the new normalized schema and return runtime metadata with the chat payload.
+- `apps/web/app/api/chat/route.ts` - stop starting Vercel workflows; instead, persist the user turn, ensure the sandbox host is running, start/resume the provider run in the host, proxy the event stream to the browser, and tee persisted events/messages into the DB.
+- `apps/web/app/api/chat/[chatId]/stream/route.ts` - reconnect to an active sandbox-host run instead of `workflow/api`.
+- `apps/web/app/api/chat/[chatId]/stop/route.ts` - abort the sandbox-host run and clear the live run pointer.
+- `apps/web/app/api/chat/[chatId]/input/route.ts` - new route to answer provider approval/question requests and resume paused runs.
+- `apps/web/app/sessions/[sessionId]/chats/[chatId]/hooks/use-session-chat-runtime.ts` - replace `@ai-sdk/react` `useChat` transport with a custom SSE/event-source client that talks to the proxy routes.
+- `apps/web/app/sessions/[sessionId]/chats/[chatId]/session-chat-context.tsx` - thread runtime metadata and pending input state through context.
+- `apps/web/app/sessions/[sessionId]/chats/[chatId]/session-chat-content.tsx` - render the new normalized message/tool/question/approval blocks and add runtime switching UX (new chat when changing runtime after conversation start).
+- `apps/web/lib/db/usage.ts` - accept usage payloads emitted by the new host protocol so usage accounting no longer depends on `collectTaskToolUsageEvents` from `@open-harness/agent`.
+- `apps/web/app/workflows/chat.ts`, `apps/web/app/workflows/chat-post-finish.ts`, and `apps/web/app/config.ts` - remove from the new chat execution path; delete after the cutover is complete.
+- Legacy package note: `packages/agent/*` becomes legacy once the sandbox-host platform is live. Do not extend it for the new system.
 
 Verification:
-- Unit-test the provider layer to prove:
-  - new sandboxes are created with `name: session_${sessionId}`
-  - reconnect/resume uses name-based lookup
-  - `getState()` always returns the stable sandbox name
-  - v2 stop does not clear persistent identity
-  - legacy snapshot restore migrates into the deterministic name
-- API tests should prove:
-  - create persists the stable name immediately
-  - stop/archive leave the stable sandbox name in DB
-  - reconnect/status no longer treat a stopped named sandbox as “missing state”
-  - resume works for both migrated v2 sessions and legacy snapshot-backed sessions
-  - file/skill/diff routes preserve identity when a sandbox is stopped/unavailable
-- Run repository checks after implementation:
+- Adapter/unit tests:
+  - `packages/agent-host/providers/opencode.test.ts` - session create/resume, agent selection, permission/question mapping, streamed event normalization.
+  - `packages/agent-host/providers/claude.test.ts` - `resume`, `canUseTool`, question/approval pause handling, and event normalization.
+  - `packages/agent-host/providers/codex.test.ts` - thread resume, `runStreamed()` event mapping, and completion metadata.
+  - `apps/web/lib/sandbox/agent-host.test.ts` - host bootstrap, auth token generation, health-check, and relaunch logic.
+- API tests:
+  - `apps/web/app/api/chat/route.test.ts`
+  - `apps/web/app/api/chat/[chatId]/stream/route.test.ts`
+  - `apps/web/app/api/chat/[chatId]/stop/route.test.ts`
+  - `apps/web/app/api/chat/[chatId]/input/route.test.ts`
+  - `apps/web/app/api/sessions/[sessionId]/chats/route.test.ts`
+  - `apps/web/app/api/settings/preferences/route.test.ts`
+- Manual end-to-end checks:
+  - create a repo-backed session, choose OpenCode, send a prompt, and confirm all execution happens after bootstrapping the host inside the sandbox
+  - reload the page mid-run and reconnect to the active host stream
+  - answer a clarifying question / approval request and verify the run resumes
+  - stop a run and confirm the host run is aborted and `activeStreamId` clears
+  - open a second chat in the same session and switch to Claude or Codex without touching the original chat thread
+  - hibernate/resume the sandbox and verify the host is relaunched while provider session/thread IDs still resume from disk-backed state
+  - validate that Claude resume works with the same sandbox cwd and that Codex thread IDs survive host restarts
+- Repository checks after implementation:
   - `bun run check`
   - `bun run typecheck`
   - `bun run test:isolated`
   - `bun run --cwd apps/web db:check`
-- Edge cases to verify manually/in tests:
-  - brand new session
-  - paused/resumed v2 session
-  - archived/unarchived v2 session
-  - legacy archived session with only `snapshotUrl`
-  - legacy active session that migrates on first pause/archive
-  - failed resume when the named sandbox was deleted remotely
-  - skills cache continuity across stop/resume with the same stable sandbox name
-
-Open implementation note:
-- Since we are dropping the direct path, implementation should remove that branch early so the rest of the migration only has one execution path to reason about.
+- Edge cases to verify:
+  - host process missing after sandbox reconnect
+  - pending approval/question survives page refresh
+  - provider session exists but active run does not
+  - runtime switch requested on a non-empty chat (should create a new chat / require an empty chat)
+  - missing provider credentials for a chosen runtime
+  - sandbox hibernates while no run is active, then resumes and continues the same provider conversation on the next prompt
