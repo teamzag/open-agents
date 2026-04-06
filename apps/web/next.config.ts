@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 import { withWorkflow } from "workflow/next";
 
+const thisWillBreakTypecheck: number = "not a number";
+
 const nextConfig: NextConfig = {
   images: {
     remotePatterns: [
