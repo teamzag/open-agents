@@ -2001,9 +2001,18 @@ export function SessionChatContent({
 
   // Track whether we've auto-attempted sandbox startup for this page load.
   const hasAutoStartedSandboxRef = useRef(false);
+  const hasAutoRestoredSnapshotRef = useRef(false);
   const shouldRefreshRestoredWorkspaceRef = useRef(false);
 
   const isArchived = session.status === "archived";
+  const isWaitingForAutoRestore =
+    !isArchived &&
+    hasSnapshot &&
+    !sandboxInfo &&
+    !isCreatingSandbox &&
+    !isRestoringSnapshot &&
+    reconnectionStatus === "no_sandbox" &&
+    !hasAutoRestoredSnapshotRef.current;
 
   // After a snapshot restore, wait for the live workspace hooks to be active
   // again before forcing refreshes. Calling the pre-restore callbacks inside
@@ -2118,6 +2127,26 @@ export function SessionChatContent({
     requestStatusSync,
   ]);
 
+  // Auto-resume hibernated sandboxes on entry after the initial reconnect
+  // probe confirms there is no live sandbox to attach to.
+  useEffect(() => {
+    if (isArchived) return;
+    if (sandboxInfo || isCreatingSandbox || isRestoringSnapshot) return;
+    if (!hasSnapshot || reconnectionStatus !== "no_sandbox") return;
+    if (hasAutoRestoredSnapshotRef.current) return;
+
+    hasAutoRestoredSnapshotRef.current = true;
+    void handleRestoreSnapshot();
+  }, [
+    isArchived,
+    hasSnapshot,
+    reconnectionStatus,
+    sandboxInfo,
+    isCreatingSandbox,
+    isRestoringSnapshot,
+    handleRestoreSnapshot,
+  ]);
+
   // Auto-create sandbox right away for new sessions/chats.
   // Skip for archived sessions.
   useEffect(() => {
@@ -2129,10 +2158,11 @@ export function SessionChatContent({
     if (session.sandboxState && reconnectionStatus === "checking") return;
     if (session.sandboxState && reconnectionStatus === "connected") {
       hasAutoStartedSandboxRef.current = true;
+      hasAutoRestoredSnapshotRef.current = true;
       return;
     }
 
-    // Sessions with a saved sandbox should wait for an explicit Resume action.
+    // Sessions with a saved sandbox auto-resume on entry.
     if (hasSnapshot) {
       return;
     }
@@ -3571,7 +3601,9 @@ export function SessionChatContent({
                   isReconnecting={isReconnectingSandbox && !isHibernatingUi}
                   isHibernating={isHibernatingUi}
                   isArchived={isArchived}
-                  isInitializing={reconnectionStatus === "idle"}
+                  isInitializing={
+                    reconnectionStatus === "idle" || isWaitingForAutoRestore
+                  }
                   snapshotPending={isArchiveSnapshotPending}
                   hasSnapshot={hasSnapshot}
                   onRestore={handleRestoreSnapshot}
