@@ -26,7 +26,8 @@ interface TestChatRecord {
 
 let sessionRecord: TestSessionRecord | null;
 let chatRecord: TestChatRecord | null;
-let currentAuthSession: { user: { id: string } } | null;
+let currentAuthSession: { user: { id: string; email?: string } } | null;
+let currentUserMessageCount = 0;
 let isSandboxActive = true;
 let existingRunStatus: string = "completed";
 let getRunShouldThrow = false;
@@ -47,6 +48,7 @@ const compareAndSetChatActiveStreamIdSpy = mock(async () => {
 });
 
 const originalFetch = globalThis.fetch;
+const originalNonVercelMessageLimit = process.env.NON_VERCEL_MESSAGE_LIMIT;
 
 globalThis.fetch = (async (_input: RequestInfo | URL) => {
   return new Response("{}", {
@@ -143,6 +145,7 @@ mock.module("./_lib/persist-tool-results", () => ({
 
 mock.module("@/lib/db/sessions", () => ({
   compareAndSetChatActiveStreamId: compareAndSetChatActiveStreamIdSpy,
+  countUserMessagesByUserId: async () => currentUserMessageCount,
   createChatMessageIfNotExists: async () => undefined,
   getChatById: async () => chatRecord,
   getSessionById: async () => sessionRecord,
@@ -201,6 +204,12 @@ const routeModulePromise = import("./route");
 
 afterAll(() => {
   globalThis.fetch = originalFetch;
+
+  if (originalNonVercelMessageLimit === undefined) {
+    delete process.env.NON_VERCEL_MESSAGE_LIMIT;
+  } else {
+    process.env.NON_VERCEL_MESSAGE_LIMIT = originalNonVercelMessageLimit;
+  }
 });
 
 function createRequest(body: string) {
@@ -239,6 +248,8 @@ describe("/api/chat route", () => {
     compareAndSetResults = [];
     startCalls = [];
     cachedSkillsState = null;
+    currentUserMessageCount = 0;
+    delete process.env.NON_VERCEL_MESSAGE_LIMIT;
     discoverSkillDirsCalls = [];
     preferencesState = {
       autoCommitPush: true,
@@ -250,6 +261,7 @@ describe("/api/chat route", () => {
     currentAuthSession = {
       user: {
         id: "user-1",
+        email: "user@example.com",
       },
     };
 
@@ -281,6 +293,59 @@ describe("/api/chat route", () => {
     const response = await POST(createValidRequest());
 
     expect(response.ok).toBe(true);
+  });
+
+  test("allows the fifth message for non-Vercel users", async () => {
+    currentUserMessageCount = 4;
+    const { POST } = await routeModulePromise;
+
+    const response = await POST(createValidRequest());
+
+    expect(response.ok).toBe(true);
+    expect(startCalls).toHaveLength(1);
+  });
+
+  test("blocks the sixth message for non-Vercel users", async () => {
+    currentUserMessageCount = 5;
+    const { POST } = await routeModulePromise;
+
+    const response = await POST(createValidRequest());
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      error: "Template message limit reached",
+      code: "NON_VERCEL_MESSAGE_LIMIT",
+      limit: 5,
+      remaining: 0,
+    });
+    expect(startCalls).toHaveLength(0);
+  });
+
+  test("does not apply the limit to vercel.com users", async () => {
+    currentUserMessageCount = 5;
+    currentAuthSession = {
+      user: {
+        id: "user-1",
+        email: "user@vercel.com",
+      },
+    };
+    const { POST } = await routeModulePromise;
+
+    const response = await POST(createValidRequest());
+
+    expect(response.ok).toBe(true);
+    expect(startCalls).toHaveLength(1);
+  });
+
+  test("disables the limit when NON_VERCEL_MESSAGE_LIMIT is 0", async () => {
+    process.env.NON_VERCEL_MESSAGE_LIMIT = "0";
+    currentUserMessageCount = 99;
+    const { POST } = await routeModulePromise;
+
+    const response = await POST(createValidRequest());
+
+    expect(response.ok).toBe(true);
+    expect(startCalls).toHaveLength(1);
   });
 
   test("passes the 500 maxSteps limit to the workflow", async () => {

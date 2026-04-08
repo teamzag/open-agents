@@ -5,7 +5,7 @@ import type { SessionUserInfo } from "@/lib/session/types";
 import { fetcher } from "@/lib/swr";
 
 export function useSession() {
-  const { data, isLoading } = useSWR<SessionUserInfo>(
+  const { data, isLoading, mutate } = useSWR<SessionUserInfo>(
     "/api/auth/info",
     fetcher,
     {
@@ -21,5 +21,6 @@ export function useSession() {
     hasGitHub: data?.hasGitHub ?? false,
     hasGitHubAccount: data?.hasGitHubAccount ?? false,
     hasGitHubInstallations: data?.hasGitHubInstallations ?? false,
+    refreshSession: mutate,
   };
 }

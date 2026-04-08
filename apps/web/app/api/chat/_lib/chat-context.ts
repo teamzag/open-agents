@@ -13,6 +13,7 @@ type AuthenticatedUserResult =
   | {
       ok: true;
       userId: string;
+      email: string | undefined;
     }
   | {
       ok: false;
@@ -84,6 +85,7 @@ export async function requireAuthenticatedUser(
   return {
     ok: true,
     userId: session.user.id,
+    email: session.user.email,
   };
 }
 

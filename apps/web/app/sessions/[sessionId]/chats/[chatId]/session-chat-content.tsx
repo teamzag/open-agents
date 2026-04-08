@@ -110,6 +110,7 @@ import { useFileSuggestions } from "@/hooks/use-file-suggestions";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useImageAttachments } from "@/hooks/use-image-attachments";
 import { useScrollToBottom } from "@/hooks/use-scroll-to-bottom";
+import { useSession } from "@/hooks/use-session";
 import { useSessionChats } from "@/hooks/use-session-chats";
 import { useSlashCommands } from "@/hooks/use-slash-commands";
 import { useUserPreferences } from "@/hooks/use-user-preferences";
@@ -1025,6 +1026,7 @@ export function SessionChatContent({
   const hasMounted = useHasMounted();
   const isMobile = useIsMobile();
   const { preferences } = useUserPreferences();
+  const { session: authSession, refreshSession } = useSession();
   const isIosDevice = useMemo(() => {
     if (typeof navigator === "undefined") {
       return false;
@@ -1200,6 +1202,37 @@ export function SessionChatContent({
       // Fire-and-forget – don't block the UI on failures.
     });
   }, [session.id]);
+
+  const templateMessageLimit = authSession?.templateMessageLimit;
+  const [remainingTemplateMessages, setRemainingTemplateMessages] = useState<
+    number | null
+  >(templateMessageLimit?.remaining ?? null);
+
+  useEffect(() => {
+    setRemainingTemplateMessages(templateMessageLimit?.remaining ?? null);
+  }, [templateMessageLimit?.remaining]);
+
+  const isTemplateMessageLimitReached =
+    templateMessageLimit !== undefined &&
+    remainingTemplateMessages !== null &&
+    remainingTemplateMessages <= 0;
+  const templateMessageLimitLabel = useMemo(() => {
+    if (!templateMessageLimit || remainingTemplateMessages === null) {
+      return null;
+    }
+
+    const messageLabel =
+      templateMessageLimit.limit === 1 ? "message" : "messages";
+    if (isTemplateMessageLimitReached) {
+      return `Template limit reached (${templateMessageLimit.limit} ${messageLabel} max)`;
+    }
+
+    return `${remainingTemplateMessages} of ${templateMessageLimit.limit} ${messageLabel} remaining`;
+  }, [
+    isTemplateMessageLimitReached,
+    remainingTemplateMessages,
+    templateMessageLimit,
+  ]);
 
   const autoCommitEnabled = Boolean(
     session.cloneUrl &&
@@ -1783,21 +1816,39 @@ export function SessionChatContent({
 
   const sendMessageWithPendingState = useCallback(
     async (message: Parameters<typeof sendMessage>[0]) => {
+      const previousRemainingTemplateMessages = remainingTemplateMessages;
+
       setHasPendingResponse(true);
       setUserStopped(false);
       lastSendTimestampRef.current = Date.now();
       hasSeenAssistantRenderableContentRef.current = false;
+      if (previousRemainingTemplateMessages !== null) {
+        setRemainingTemplateMessages(
+          Math.max(previousRemainingTemplateMessages - 1, 0),
+        );
+      }
       void setChatStreaming(chatInfo.id, true);
 
       try {
         await sendMessage(message);
+        void refreshSession().catch(() => undefined);
       } catch (error) {
         setHasPendingResponse(false);
+        if (previousRemainingTemplateMessages !== null) {
+          setRemainingTemplateMessages(previousRemainingTemplateMessages);
+        }
         void setChatStreaming(chatInfo.id, false);
+        void refreshSession().catch(() => undefined);
         throw error;
       }
     },
-    [chatInfo.id, sendMessage, setChatStreaming],
+    [
+      chatInfo.id,
+      refreshSession,
+      remainingTemplateMessages,
+      sendMessage,
+      setChatStreaming,
+    ],
   );
 
   const handleDeleteUserMessage = useCallback(
@@ -1842,6 +1893,7 @@ export function SessionChatContent({
 
         setMessages(messages.slice(0, targetMessageIndex));
         await refreshChats();
+        void refreshSession().catch(() => undefined);
       } catch (err) {
         console.error("Failed to delete message:", err);
         setDeleteMessageError(
@@ -1858,6 +1910,7 @@ export function SessionChatContent({
       chatInfo.id,
       setMessages,
       refreshChats,
+      refreshSession,
     ],
   );
 
@@ -3712,7 +3765,8 @@ export function SessionChatContent({
                     isArchived ||
                     !isSandboxActive ||
                     isChatInFlight ||
-                    hasPendingResponse
+                    hasPendingResponse ||
+                    isTemplateMessageLimitReached
                   ) {
                     return;
                   }
@@ -3853,7 +3907,9 @@ export function SessionChatContent({
                     placeholder={
                       inlineQuestion.isActive
                         ? inlineQuestion.placeholder
-                        : "Request changes or ask a question..."
+                        : isTemplateMessageLimitReached
+                          ? "Template message limit reached"
+                          : "Request changes or ask a question..."
                     }
                     rows={1}
                     onFocus={handleTextareaFocus}
@@ -3876,7 +3932,11 @@ export function SessionChatContent({
                           e.currentTarget.form?.requestSubmit();
                         } else if (!isChatInFlight && !hasPendingResponse) {
                           e.preventDefault();
-                          if (!isArchived && isSandboxActive) {
+                          if (
+                            !isArchived &&
+                            isSandboxActive &&
+                            !isTemplateMessageLimitReached
+                          ) {
                             e.currentTarget.form?.requestSubmit();
                           }
                         }
@@ -3903,10 +3963,26 @@ export function SessionChatContent({
                         }
                       }
                     }}
-                    disabled={isArchived}
-                    className="w-full resize-none overflow-y-auto bg-transparent text-foreground placeholder:text-muted-foreground focus:outline-none"
+                    disabled={
+                      isArchived ||
+                      (isTemplateMessageLimitReached &&
+                        !inlineQuestion.isActive)
+                    }
+                    className="w-full resize-none overflow-y-auto bg-transparent text-foreground placeholder:text-muted-foreground focus:outline-none disabled:cursor-not-allowed disabled:opacity-70"
                     style={{ minHeight: "24px" }}
                   />
+                  {templateMessageLimitLabel ? (
+                    <p
+                      className={cn(
+                        "mt-2 text-xs",
+                        isTemplateMessageLimitReached
+                          ? "text-muted-foreground"
+                          : "text-muted-foreground/80",
+                      )}
+                    >
+                      {templateMessageLimitLabel}
+                    </p>
+                  ) : null}
                 </div>
 
                 {/* Bottom toolbar */}
@@ -3917,7 +3993,7 @@ export function SessionChatContent({
                       variant="ghost"
                       size="icon"
                       onClick={openFilePicker}
-                      disabled={isArchived}
+                      disabled={isArchived || isTemplateMessageLimitReached}
                       className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground"
                     >
                       <Paperclip className="h-4 w-4" />
@@ -3983,7 +4059,11 @@ export function SessionChatContent({
                       variant="ghost"
                       size="icon"
                       onClick={handleMicClick}
-                      disabled={isArchived || recordingState === "processing"}
+                      disabled={
+                        isArchived ||
+                        isTemplateMessageLimitReached ||
+                        recordingState === "processing"
+                      }
                       className={`relative h-8 w-8 rounded-full ${
                         recordingState === "recording"
                           ? "text-red-500"
@@ -4061,7 +4141,8 @@ export function SessionChatContent({
                                 isChatInFlight ||
                                 (!input.trim() && images.length === 0) ||
                                 isUpdatingModel ||
-                                !isSandboxActive
+                                !isSandboxActive ||
+                                isTemplateMessageLimitReached
                               }
                               className="h-8 w-8 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-30"
                             >

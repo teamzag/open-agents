@@ -545,6 +545,19 @@ export async function getChatMessages(chatId: string) {
   });
 }
 
+export async function countUserMessagesByUserId(
+  userId: string,
+): Promise<number> {
+  const [result] = await db
+    .select({ count: sql<number>`COUNT(*)::int` })
+    .from(chatMessages)
+    .innerJoin(chats, eq(chats.id, chatMessages.chatId))
+    .innerJoin(sessions, eq(sessions.id, chats.sessionId))
+    .where(and(eq(sessions.userId, userId), eq(chatMessages.role, "user")));
+
+  return result?.count ?? 0;
+}
+
 type DeleteChatMessageAndFollowingResult =
   | { status: "not_found" }
   | { status: "not_user_message" }

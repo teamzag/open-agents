@@ -3,6 +3,7 @@ import { start } from "workflow/api";
 import type { WebAgentUIMessage } from "@/app/types";
 import {
   compareAndSetChatActiveStreamId,
+  countUserMessagesByUserId,
   createChatMessageIfNotExists,
   getChatById,
   isFirstChatMessage,
@@ -24,6 +25,7 @@ import { parseChatRequestBody, requireChatIdentifiers } from "./_lib/request";
 import { createChatRuntime } from "./_lib/runtime";
 import { runAgentWorkflow } from "@/app/workflows/chat";
 import { persistAssistantMessagesWithToolResults } from "./_lib/persist-tool-results";
+import { getTemplateMessageLimitState } from "@/lib/template-message-limit";
 
 export const maxDuration = 800;
 
@@ -35,7 +37,7 @@ export async function POST(req: Request) {
   if (!authResult.ok) {
     return authResult.response;
   }
-  const userId = authResult.userId;
+  const { userId, email } = authResult;
 
   const parsedBody = await parseChatRequestBody(req);
   if (!parsedBody.ok) {
@@ -68,6 +70,28 @@ export async function POST(req: Request) {
   const activeSandboxState = sessionRecord.sandboxState;
   if (!activeSandboxState) {
     throw new Error("Sandbox not initialized");
+  }
+
+  const templateMessageLimitApplies = getTemplateMessageLimitState({
+    email,
+    usedMessages: 0,
+  });
+  if (templateMessageLimitApplies) {
+    const templateMessageLimit = getTemplateMessageLimitState({
+      email,
+      usedMessages: await countUserMessagesByUserId(userId),
+    });
+    if (templateMessageLimit?.reached) {
+      return Response.json(
+        {
+          error: "Template message limit reached",
+          code: "NON_VERCEL_MESSAGE_LIMIT",
+          limit: templateMessageLimit.limit,
+          remaining: templateMessageLimit.remaining,
+        },
+        { status: 403 },
+      );
+    }
   }
 
   // Guard: if a workflow is already running for this chat, reconnect to it
