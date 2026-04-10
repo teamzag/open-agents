@@ -21,7 +21,7 @@ function countToolCalls(message: WebAgentUIMessage): number {
   return count;
 }
 
-const FILE_MODIFYING_TOOLS = new Set(["tool-write", "tool-edit"]);
+    const FILE_MODIFYING_TOOLS = new Set(["tool-write", "tool-edit"]);
 
 function getChangedFiles(message: WebAgentUIMessage): string[] {
   const files = new Set<string>();
