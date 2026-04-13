@@ -6,6 +6,17 @@ import type { UIMessageChunk } from "ai";
 const writtenChunks: UIMessageChunk[] = [];
 let runStatus: string = "running";
 
+class MockNoOutputGeneratedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "MockNoOutputGeneratedError";
+  }
+
+  static isInstance(error: unknown): error is MockNoOutputGeneratedError {
+    return error instanceof MockNoOutputGeneratedError;
+  }
+}
+
 const spies = {
   persistAssistantMessage: mock(() => Promise.resolve()),
   persistSandboxState: mock(() => Promise.resolve()),
@@ -46,6 +57,7 @@ let agentResponseHeaders: Record<string, string> | undefined;
 let agentResponseBody: unknown;
 let agentProviderMetadata: Record<string, unknown> | undefined;
 let agentInputMessages: unknown;
+let agentStreamError: unknown;
 
 function buildAgentSteps() {
   return [
@@ -123,6 +135,7 @@ mock.module("@/app/config", () => ({
             part: Record<string, unknown>;
           }) => unknown;
           onFinish?: (args: { responseMessage: unknown }) => void;
+          onError?: (error: unknown) => string;
         }) => {
           const priorAssistantMessage = opts.originalMessages?.at(-1);
           const assistantMessage = (
@@ -162,6 +175,12 @@ mock.module("@/app/config", () => ({
                     messageMetadata: metadata,
                   };
                 }
+              }
+              if (agentStreamError !== undefined) {
+                opts.onError?.(agentStreamError);
+                throw new MockNoOutputGeneratedError(
+                  "No output generated. Check the stream for errors.",
+                );
               }
               if (streamOnFinishCallback) {
                 streamOnFinishCallback({
@@ -218,6 +237,7 @@ mock.module("ai", () => ({
     }),
   generateId: () => "gen-id-1",
   isToolUIPart: (part: { type: string }) => part.type === "tool-invocation",
+  NoOutputGeneratedError: MockNoOutputGeneratedError,
   pruneMessages: ({ messages }: { messages: Array<Record<string, unknown>> }) =>
     messages.filter((message) => {
       const content = message.content;
@@ -269,6 +289,7 @@ beforeEach(() => {
   agentResponseBody = undefined;
   agentProviderMetadata = undefined;
   agentInputMessages = undefined;
+  agentStreamError = undefined;
   streamOnFinishCallback = undefined;
   Object.values(spies).forEach((s) => s.mockClear());
 });
@@ -944,6 +965,15 @@ describe("runAgentWorkflow", () => {
     );
 
     expect(spies.runAutoCommitStep).not.toHaveBeenCalled();
+  });
+
+  test("rethrows the underlying agent stream error instead of NoOutputGeneratedError", async () => {
+    agentStreamError = new Error("OpenAI stream failed with 400");
+
+    await expect(runAgentWorkflow(makeOptions())).rejects.toThrow(
+      "OpenAI stream failed with 400",
+    );
+    expect(spies.clearActiveStream).toHaveBeenCalled();
   });
 
   test("still clears stream and sends finish even on step error", async () => {

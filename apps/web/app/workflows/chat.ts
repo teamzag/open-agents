@@ -5,6 +5,7 @@ import {
   isToolUIPart,
   type LanguageModelUsage,
   type ModelMessage,
+  NoOutputGeneratedError,
   pruneMessages,
   type UIMessageChunk,
 } from "ai";
@@ -774,6 +775,7 @@ const runAgentStep = async (
   try {
     let responseMessage: WebAgentUIMessage | undefined;
     let lastStepUsage: LanguageModelUsage | undefined;
+    let streamError: unknown;
     const lastOriginalMessage = originalMessages.at(-1);
     const existingStepFinishReasons: WebAgentStepFinishMetadata[] =
       lastOriginalMessage?.role === "assistant"
@@ -792,46 +794,73 @@ const runAgentStep = async (
       abortSignal: abortController.signal,
     });
 
-    for await (const part of result.toUIMessageStream<WebAgentUIMessage>({
-      originalMessages,
-      generateMessageId: () => messageId,
-      sendStart: false,
-      sendFinish: false,
-      messageMetadata: ({ part: streamPart }) => {
-        if (streamPart.type === "finish-step") {
-          lastStepUsage = streamPart.usage;
-          if (streamPart.usage) {
-            totalMessageUsage = totalMessageUsage
-              ? addLanguageModelUsage(totalMessageUsage, streamPart.usage)
-              : streamPart.usage;
+    try {
+      for await (const part of result.toUIMessageStream<WebAgentUIMessage>({
+        originalMessages,
+        generateMessageId: () => messageId,
+        sendStart: false,
+        sendFinish: false,
+        messageMetadata: ({ part: streamPart }) => {
+          if (streamPart.type === "finish-step") {
+            lastStepUsage = streamPart.usage;
+            if (streamPart.usage) {
+              totalMessageUsage = totalMessageUsage
+                ? addLanguageModelUsage(totalMessageUsage, streamPart.usage)
+                : streamPart.usage;
+            }
+            stepFinishReasons = [
+              ...stepFinishReasons,
+              {
+                finishReason: streamPart.finishReason,
+                rawFinishReason: streamPart.rawFinishReason,
+              },
+            ];
+            return {
+              lastStepUsage,
+              totalMessageUsage,
+              lastStepFinishReason: streamPart.finishReason,
+              lastStepRawFinishReason: streamPart.rawFinishReason,
+              stepFinishReasons,
+            } satisfies WebAgentMessageMetadata;
           }
-          stepFinishReasons = [
-            ...stepFinishReasons,
-            {
-              finishReason: streamPart.finishReason,
-              rawFinishReason: streamPart.rawFinishReason,
-            },
-          ];
-          return {
-            lastStepUsage,
-            totalMessageUsage,
-            lastStepFinishReason: streamPart.finishReason,
-            lastStepRawFinishReason: streamPart.rawFinishReason,
-            stepFinishReasons,
-          } satisfies WebAgentMessageMetadata;
-        }
-        return undefined;
-      },
-      onFinish: ({ responseMessage: finishedResponseMessage }) => {
-        responseMessage = finishedResponseMessage;
-      },
-    })) {
-      const writer = writable.getWriter();
-      await writer.write(part);
-      writer.releaseLock();
+          return undefined;
+        },
+        onFinish: ({ responseMessage: finishedResponseMessage }) => {
+          responseMessage = finishedResponseMessage;
+        },
+        onError: (error) => {
+          streamError = error;
+          console.error("[workflow] Agent stream error", {
+            workflowRunId,
+            chatId,
+            sessionId,
+            messageId,
+            selectedModelId,
+            stepNumber,
+            error,
+          });
+          return error instanceof Error ? error.message : String(error);
+        },
+      })) {
+        const writer = writable.getWriter();
+        await writer.write(part);
+        writer.releaseLock();
+      }
+    } catch (error) {
+      if (streamError != null && NoOutputGeneratedError.isInstance(error)) {
+        throw streamError instanceof Error
+          ? streamError
+          : new Error(String(streamError));
+      }
+      throw error;
     }
 
     if (responseMessage == null) {
+      if (streamError != null) {
+        throw streamError instanceof Error
+          ? streamError
+          : new Error(String(streamError));
+      }
       throw new Error("Agent stream finished without a response message");
     }
 
