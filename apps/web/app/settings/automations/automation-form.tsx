@@ -13,8 +13,10 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { ModelCombobox } from "@/components/model-combobox";
 import { RepoSelectorCompact } from "@/components/repo-selector-compact";
 import { BranchSelector } from "@/components/branch-selector";
+import { useModelOptions } from "@/hooks/use-model-options";
 import {
   formatAutomationDateTime,
   getNextCronOccurrence,
@@ -91,6 +93,15 @@ export function AutomationForm({
       (tool) => tool.toolType === "open_pull_request",
     ) ?? false,
   );
+  const { modelOptions, loading: modelsLoading } = useModelOptions();
+  const modelItems = useMemo(
+    () => [
+      { id: "", label: "Default (from preferences)" },
+      ...modelOptions,
+    ],
+    [modelOptions],
+  );
+
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -190,16 +201,16 @@ export function AutomationForm({
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="automation-model">Model</Label>
-          <Input
-            id="automation-model"
+          <Label>Model</Label>
+          <ModelCombobox
             value={modelId}
-            onChange={(event) => setModelId(event.target.value)}
-            placeholder="anthropic/claude-haiku-4.5"
+            items={modelItems}
+            placeholder="Default (from preferences)"
+            searchPlaceholder="Search models..."
+            emptyText="No models found."
+            disabled={modelsLoading}
+            onChange={setModelId}
           />
-          <p className="text-xs text-muted-foreground">
-            Leave blank to use your default model preference.
-          </p>
         </div>
       </div>
 
