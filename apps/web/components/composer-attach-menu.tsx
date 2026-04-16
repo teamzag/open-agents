@@ -4,7 +4,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Paperclip,
-  Plus,
   Plug,
   Settings2,
 } from "lucide-react";
@@ -116,7 +115,7 @@ export function ComposerAttachMenu({
           disabled={disabled}
           className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground"
         >
-          <Plus className="h-4 w-4" />
+          <Paperclip className="h-4 w-4" />
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-64 p-0" align="start" sideOffset={8}>
