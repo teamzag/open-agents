@@ -227,6 +227,20 @@ mock.module("ai", () => ({
 
 mock.module("@open-harness/agent", () => ({}));
 
+// Stubbed pricing — tests that want cost attached override this via
+// `modelsDevPricingOverride` before invoking the workflow.
+let modelsDevPricingOverride:
+  | {
+      input?: number;
+      output?: number;
+      cache_read?: number;
+    }
+  | undefined;
+
+mock.module("@/lib/models-with-context", () => ({
+  fetchModelsDevPricing: async () => modelsDevPricingOverride,
+}));
+
 const { runAgentWorkflow } = await import("./chat");
 
 // ── Helpers ────────────────────────────────────────────────────────
@@ -271,6 +285,7 @@ beforeEach(() => {
   agentProviderMetadata = undefined;
   agentInputMessages = undefined;
   streamOnFinishCallback = undefined;
+  modelsDevPricingOverride = undefined;
   Object.values(spies).forEach((s) => s.mockClear());
 });
 
@@ -698,6 +713,83 @@ describe("runAgentWorkflow", () => {
       outputTokens: 10,
       totalTokens: 30,
     });
+  });
+
+  test("embeds estimated cost on the persisted message when pricing is available", async () => {
+    // $1 per million input tokens, $2 per million output tokens.
+    modelsDevPricingOverride = { input: 1, output: 2 };
+    agentFinishReason = "stop";
+    agentStreamParts = [
+      {
+        type: "finish-step",
+        finishReason: "stop",
+        rawFinishReason: "provider_stop",
+        usage: { inputTokens: 1_000_000, outputTokens: 500_000 },
+      },
+    ];
+    agentTotalUsage = {
+      inputTokens: 1_000_000,
+      outputTokens: 500_000,
+      totalTokens: 1_500_000,
+    };
+
+    await runAgentWorkflow(makeOptions());
+
+    const persistCalls = spies.persistAssistantMessage.mock
+      .calls as unknown[][];
+    const persistedMessage = persistCalls.at(-1)?.[1] as {
+      metadata?: {
+        totalMessageCost?: {
+          amount: number;
+          currency: string;
+          pricingSource: string;
+          pricedAt: string;
+          modelId: string;
+        };
+        lastStepCost?: { amount: number };
+      };
+    };
+
+    // 1M input * $1/M + 500k output * $2/M = $1 + $1 = $2.
+    expect(persistedMessage.metadata?.totalMessageCost?.amount).toBeCloseTo(
+      2,
+      5,
+    );
+    expect(persistedMessage.metadata?.totalMessageCost?.currency).toBe("USD");
+    expect(persistedMessage.metadata?.totalMessageCost?.pricingSource).toBe(
+      "models.dev",
+    );
+    expect(persistedMessage.metadata?.totalMessageCost?.modelId).toBe("gpt-4");
+    expect(typeof persistedMessage.metadata?.totalMessageCost?.pricedAt).toBe(
+      "string",
+    );
+    expect(persistedMessage.metadata?.lastStepCost?.amount).toBeCloseTo(2, 5);
+  });
+
+  test("omits estimated cost when no pricing is available for the model", async () => {
+    modelsDevPricingOverride = undefined;
+    agentStreamParts = [
+      {
+        type: "finish-step",
+        finishReason: "stop",
+        rawFinishReason: "provider_stop",
+        usage: { inputTokens: 10, outputTokens: 5 },
+      },
+    ];
+
+    await runAgentWorkflow(makeOptions());
+
+    const persistCalls = spies.persistAssistantMessage.mock
+      .calls as unknown[][];
+    const persistedMessage = persistCalls.at(-1)?.[1] as {
+      metadata?: {
+        totalMessageCost?: unknown;
+        lastStepCost?: unknown;
+      };
+    };
+
+    expect(persistedMessage.metadata?.totalMessageCost).toBeUndefined();
+    expect(persistedMessage.metadata?.lastStepCost).toBeUndefined();
   });
 
   test("refreshes lifecycle activity before clearing the active stream", async () => {

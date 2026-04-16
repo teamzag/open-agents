@@ -18,11 +18,34 @@ export type WebAgentStepFinishMetadata = {
   rawFinishReason?: string;
 };
 
+/**
+ * Estimated cost for a language-model call, computed at workflow time from
+ * token usage and the pricing data available at that moment. The estimate is
+ * embedded on the message so historical cost remains stable even if upstream
+ * pricing or the user's selected model changes later.
+ */
+export type WebAgentCostEstimate = {
+  /** Estimated amount in `currency`. */
+  amount: number;
+  /** ISO 4217 currency code. Always `"USD"` today. */
+  currency: "USD";
+  /** Where the pricing data was sourced from. */
+  pricingSource: "models.dev";
+  /** ISO 8601 timestamp when pricing was fetched. */
+  pricedAt: string;
+  /** Model id the estimate was computed for. */
+  modelId: string;
+};
+
 export type WebAgentMessageMetadata = {
   selectedModelId?: string;
   modelId?: string;
   lastStepUsage?: LanguageModelUsage;
   totalMessageUsage?: LanguageModelUsage;
+  /** Estimated cost of the most recent step, based on `lastStepUsage`. */
+  lastStepCost?: WebAgentCostEstimate;
+  /** Estimated cost of the full message so far, based on `totalMessageUsage`. */
+  totalMessageCost?: WebAgentCostEstimate;
   lastStepFinishReason?: FinishReason;
   lastStepRawFinishReason?: string;
   stepFinishReasons?: WebAgentStepFinishMetadata[];

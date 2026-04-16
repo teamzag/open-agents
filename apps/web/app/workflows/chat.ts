@@ -11,7 +11,9 @@ import {
 import type { OpenHarnessAgentCallOptions } from "@open-harness/agent";
 import { getWorkflowMetadata, getWritable } from "workflow";
 import { getRun } from "workflow/api";
+import { buildCostEstimate } from "./cost-utils";
 import { addLanguageModelUsage } from "./usage-utils";
+import type { AvailableModelCost } from "@/lib/models";
 import type {
   WebAgentCommitData,
   WebAgentMessageMetadata,
@@ -99,6 +101,29 @@ const convertMessages = async (
 const generateId = async () => {
   "use step";
   return generateIdAi();
+};
+
+type ModelPricingSnapshot = {
+  cost: AvailableModelCost | undefined;
+  pricedAt: string;
+};
+
+/**
+ * Fetch pricing for the workflow's model from models.dev. Runs as a durable
+ * step so the result is memoized for the lifetime of the workflow run and the
+ * `pricedAt` timestamp is stable across replays.
+ */
+const fetchModelPricingStep = async (
+  modelId: string,
+): Promise<ModelPricingSnapshot> => {
+  "use step";
+  const { fetchModelsDevPricing } = await import("@/lib/models-with-context");
+  try {
+    const cost = await fetchModelsDevPricing(modelId);
+    return { cost, pricedAt: new Date().toISOString() };
+  } catch {
+    return { cost: undefined, pricedAt: new Date().toISOString() };
+  }
 };
 
 function buildStepTiming(
@@ -460,11 +485,12 @@ export async function runAgentWorkflow(options: Options) {
     throw new Error("runAgentWorkflow requires at least one message");
   }
 
-  const [modelMessages, assistantId] = await Promise.all([
+  const [modelMessages, assistantId, modelPricing] = await Promise.all([
     convertMessages(options.messages),
     latestMessage.role === "assistant"
       ? Promise.resolve(latestMessage.id)
       : generateId(),
+    fetchModelPricingStep(options.modelId),
   ]);
 
   let pendingAssistantResponse: WebAgentUIMessage =
@@ -527,6 +553,7 @@ export async function runAgentWorkflow(options: Options) {
           options.modelId,
           options.agentOptions,
           step + 1,
+          modelPricing,
         );
       } catch (error) {
         if (isStepTimingError(error)) {
@@ -570,11 +597,18 @@ export async function runAgentWorkflow(options: Options) {
     }
 
     if (totalUsage) {
+      const totalMessageCost = buildCostEstimate(
+        totalUsage,
+        modelPricing.cost,
+        options.modelId,
+        modelPricing.pricedAt,
+      );
       pendingAssistantResponse = {
         ...pendingAssistantResponse,
         metadata: {
           ...pendingAssistantResponse.metadata,
           totalMessageUsage: totalUsage,
+          ...(totalMessageCost ? { totalMessageCost } : {}),
         },
       };
     }
@@ -785,6 +819,7 @@ const runAgentStep = async (
   modelId: string,
   agentOptions: OpenHarnessAgentCallOptions,
   stepNumber: number,
+  modelPricing: ModelPricingSnapshot,
 ) => {
   "use step";
 
@@ -835,11 +870,25 @@ const runAgentStep = async (
               rawFinishReason: streamPart.rawFinishReason,
             },
           ];
+          const lastStepCost = buildCostEstimate(
+            lastStepUsage,
+            modelPricing.cost,
+            modelId,
+            modelPricing.pricedAt,
+          );
+          const totalMessageCost = buildCostEstimate(
+            totalMessageUsage,
+            modelPricing.cost,
+            modelId,
+            modelPricing.pricedAt,
+          );
           return {
             selectedModelId,
             modelId,
             lastStepUsage,
             totalMessageUsage,
+            ...(lastStepCost ? { lastStepCost } : {}),
+            ...(totalMessageCost ? { totalMessageCost } : {}),
             lastStepFinishReason: streamPart.finishReason,
             lastStepRawFinishReason: streamPart.rawFinishReason,
             stepFinishReasons,
@@ -879,13 +928,30 @@ const runAgentStep = async (
       ]);
 
     if (stepUsage) {
+      const nextTotalMessageUsage = existingTotalMessageUsage
+        ? addLanguageModelUsage(existingTotalMessageUsage, stepUsage)
+        : stepUsage;
+      const nextTotalMessageCost = buildCostEstimate(
+        nextTotalMessageUsage,
+        modelPricing.cost,
+        modelId,
+        modelPricing.pricedAt,
+      );
+      const nextLastStepCost = buildCostEstimate(
+        stepUsage,
+        modelPricing.cost,
+        modelId,
+        modelPricing.pricedAt,
+      );
       responseMessage = {
         ...responseMessage,
         metadata: {
           ...responseMessage.metadata,
-          totalMessageUsage: existingTotalMessageUsage
-            ? addLanguageModelUsage(existingTotalMessageUsage, stepUsage)
-            : stepUsage,
+          totalMessageUsage: nextTotalMessageUsage,
+          ...(nextTotalMessageCost
+            ? { totalMessageCost: nextTotalMessageCost }
+            : {}),
+          ...(nextLastStepCost ? { lastStepCost: nextLastStepCost } : {}),
         },
       };
     }

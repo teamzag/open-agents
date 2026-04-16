@@ -236,3 +236,17 @@ export async function fetchAvailableLanguageModelsWithContext(): Promise<
     addModelsDevMetadata(model, modelsDevMetadataMap),
   );
 }
+
+/**
+ * Fetch pricing for a single model id from models.dev. Unlike
+ * `fetchAvailableLanguageModelsWithContext`, this does NOT hit the AI Gateway
+ * model list, so it is cheap enough to run inside a workflow step.
+ *
+ * Returns `undefined` if models.dev has no pricing for the given id.
+ */
+export async function fetchModelsDevPricing(
+  modelId: string,
+): Promise<AvailableModelCost | undefined> {
+  const metadataMap = await fetchModelsDevMetadataMap();
+  return metadataMap.get(modelId)?.cost;
+}
