@@ -1,7 +1,3 @@
-import { eq } from "drizzle-orm";
-import { nanoid } from "nanoid";
-import { db } from "@/lib/db/client";
-import { vercelConnections } from "@/lib/db/schema";
 import { getServerSession } from "@/lib/session/get-server-session";
 import {
   clearGatewayConfig,
@@ -30,27 +26,10 @@ export async function POST(req: Request) {
   }
 
   try {
-    // Upsert the vercel_connections row with team selection
-    await db
-      .insert(vercelConnections)
-      .values({
-        id: nanoid(),
-        userId: session.user.id,
-        teamId,
-        teamSlug: teamSlug || null,
-      })
-      .onConflictDoUpdate({
-        target: vercelConnections.userId,
-        set: {
-          teamId,
-          teamSlug: teamSlug || null,
-          updatedAt: new Date(),
-        },
-      });
-
     const apiKey = await obtainGatewayApiKey({
       userId: session.user.id,
       teamId,
+      teamSlug: teamSlug || null,
       userName: session.user.name,
     });
 

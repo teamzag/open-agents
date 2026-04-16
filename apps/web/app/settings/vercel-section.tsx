@@ -5,8 +5,14 @@ import Image from "next/image";
 import useSWR, { useSWRConfig } from "swr";
 import { DollarSign, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useSession } from "@/hooks/use-session";
 import { fetcher } from "@/lib/swr";
 
@@ -108,7 +114,6 @@ export function VercelSectionSkeleton() {
 export function VercelSection() {
   const { session } = useSession();
   const [isSwitching, setIsSwitching] = useState(false);
-  const [showTeamPicker, setShowTeamPicker] = useState(false);
 
   const { data: teamsData } = useSWR<TeamsResponse>(
     "/api/vercel/teams",
@@ -141,7 +146,6 @@ export function VercelSection() {
         }
 
         await mutateStatus();
-        setShowTeamPicker(false);
       } catch (err) {
         toast.error(
           err instanceof Error ? err.message : "Failed to update team",
@@ -180,75 +184,66 @@ export function VercelSection() {
             All token usage is billed through the selected Vercel team using
             an AI Gateway API key.
           </p>
-          {currentTeam && !showTeamPicker ? (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <Image
-                    src={`https://vercel.com/api/www/avatar?teamId=${currentTeam.id}&s=80`}
-                    alt=""
-                    width={40}
-                    height={40}
-                    className="size-10 rounded-full bg-muted"
-                  />
-                  <div className="flex items-center gap-2.5">
-                    <p className="text-sm font-medium">{currentTeam.name}</p>
-                    <CreditsBadge teamId={currentTeam.id} />
-                  </div>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowTeamPicker(true)}
-                >
-                  Change
-                </Button>
+          {isSwitching ? (
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Skeleton className="size-10 rounded-full" />
+                <Skeleton className="h-4 w-32" />
               </div>
-            </div>
-          ) : showTeamPicker || !currentTeam ? (
-            <div className="space-y-2">
-              {isSwitching && (
-                <div className="flex items-center gap-2 pb-1 text-xs text-muted-foreground">
-                  <Loader2 className="size-3 animate-spin" />
-                  Updating team…
-                </div>
-              )}
-              <div className="max-h-[200px] overflow-y-auto">
-                {teams.map((team) => (
-                  <button
-                    key={team.id}
-                    type="button"
-                    disabled={isSwitching}
-                    onClick={() => handleTeamChange(team)}
-                    className="flex w-full items-center gap-3 rounded-md px-2 py-2 text-left transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    <Image
-                      src={`https://vercel.com/api/www/avatar?teamId=${team.id}&s=64`}
-                      alt=""
-                      width={32}
-                      height={32}
-                      className="size-8 rounded-full bg-muted"
-                    />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm">{team.name}</p>
-                    </div>
-                  </button>
-                ))}
-              </div>
-              {currentTeam && (
-                <button
-                  type="button"
-                  onClick={() => setShowTeamPicker(false)}
-                  className="text-xs text-muted-foreground underline-offset-2 hover:underline"
-                >
-                  Cancel
-                </button>
-              )}
+              <Skeleton className="h-9 w-48 rounded-md" />
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground">
-              No team selected. Select a team to enable AI Gateway billing.
-            </p>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                {currentTeam && (
+                  <>
+                    <Image
+                      src={`https://vercel.com/api/www/avatar?teamId=${currentTeam.id}&s=80`}
+                      alt=""
+                      width={40}
+                      height={40}
+                      className="size-10 rounded-full bg-muted"
+                    />
+                    <div className="flex items-center gap-2.5">
+                      <p className="text-sm font-medium">
+                        {currentTeam.name}
+                      </p>
+                      <CreditsBadge teamId={currentTeam.id} />
+                    </div>
+                  </>
+                )}
+              </div>
+              <Select
+                value={currentTeamId ?? undefined}
+                onValueChange={(teamId) => {
+                  const team = teams.find((t) => t.id === teamId);
+                  if (team) {
+                    handleTeamChange(team);
+                  }
+                }}
+                disabled={!teams.length}
+              >
+                <SelectTrigger className="w-48">
+                  <SelectValue placeholder="Select a team…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {teams.map((team) => (
+                    <SelectItem key={team.id} value={team.id}>
+                      <div className="flex items-center gap-2">
+                        <Image
+                          src={`https://vercel.com/api/www/avatar?teamId=${team.id}&s=32`}
+                          alt=""
+                          width={16}
+                          height={16}
+                          className="size-4 rounded-full"
+                        />
+                        <span>{team.name}</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           )}
         </div>
       </div>

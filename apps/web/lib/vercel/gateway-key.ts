@@ -93,6 +93,7 @@ async function revokeGatewayApiKey(params: {
 export async function obtainGatewayApiKey(params: {
   userId: string;
   teamId: string;
+  teamSlug?: string | null;
   userName?: string;
 }): Promise<string | null> {
   const token = await getUserVercelToken(params.userId);
@@ -149,6 +150,7 @@ export async function obtainGatewayApiKey(params: {
         id: nanoid(),
         userId: params.userId,
         teamId: params.teamId,
+        teamSlug: params.teamSlug ?? null,
         gatewayApiKey: encrypt(apiKeyString),
         gatewayApiKeyId: apiKeyId,
         gatewayApiKeyObtainedAt: now,
@@ -158,6 +160,7 @@ export async function obtainGatewayApiKey(params: {
         target: vercelConnections.userId,
         set: {
           teamId: params.teamId,
+          teamSlug: params.teamSlug ?? null,
           gatewayApiKey: encrypt(apiKeyString),
           gatewayApiKeyId: apiKeyId,
           gatewayApiKeyObtainedAt: now,
