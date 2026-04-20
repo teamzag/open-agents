@@ -88,7 +88,7 @@ export const auth = betterAuth({
   user: {
     modelName: "users",
     fields: {
-      image: "avatar_url",
+      image: "avatarUrl",
     },
     additionalFields: {
       username: { type: "string", required: true },
