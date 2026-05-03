@@ -28,6 +28,7 @@ mock.module("@/lib/db/sessions", () => ({
 }));
 
 mock.module("@/lib/sandbox/utils", () => ({
+  isSandboxActive: () => true,
   isSandboxUnavailableError: (msg: string) =>
     msg.includes("sandbox unavailable"),
 }));
@@ -426,6 +427,42 @@ describe("computeAndCacheDiff", () => {
       expect(result.files).toHaveLength(1);
       expect(result.files[0].path).toBe("new-file.ts");
       expect(result.files[0].status).toBe("added");
+    });
+
+    test("skips generated and binary untracked files", async () => {
+      const readPaths: string[] = [];
+
+      const result = await computeAndCacheDiff({
+        sandbox: createSandbox({
+          exec: async (command: string) => {
+            if (command === "git symbolic-ref refs/remotes/origin/HEAD")
+              return {
+                success: true,
+                stdout: "refs/remotes/origin/main",
+                stderr: "",
+              };
+            if (command.includes("merge-base"))
+              return { success: true, stdout: "aaa111\n", stderr: "" };
+            if (command.includes("ls-files --others"))
+              return {
+                success: true,
+                stdout:
+                  "new-file.ts\napps/console/.swc/plugins/linux_x86_64_22.0.1/plugin.wasmer-v7\nbinary.bin\n",
+                stderr: "",
+              };
+            return { success: true, stdout: "", stderr: "" };
+          },
+          readFile: async (path: string) => {
+            readPaths.push(path);
+            return path.endsWith("binary.bin") ? "bin\0ary" : "const x = 1;\n";
+          },
+        }) as never,
+        sessionId: "session-1",
+      });
+
+      expect(result.files).toHaveLength(1);
+      expect(result.files[0].path).toBe("new-file.ts");
+      expect(readPaths.some((path) => path.includes("/.swc/"))).toBe(false);
     });
   });
 

@@ -534,11 +534,11 @@ describe("runAgentWorkflow", () => {
   test("streams an archived-session setup message when runtime rejects", async () => {
     spies.resolveChatSandboxRuntime.mockImplementationOnce(async (params) => {
       writtenChunks.push({ type: "start", messageId: params.assistantId });
-      throw new Error("Session is archived");
+      throw new Error("Task is archived");
     });
 
     await expect(runAgentWorkflow(makeOptions())).rejects.toThrow(
-      "Session is archived",
+      "Task is archived",
     );
 
     expect(writtenChunks).toEqual(
@@ -546,7 +546,7 @@ describe("runAgentWorkflow", () => {
         {
           type: "text-delta",
           id: "setup-error",
-          delta: "This session is archived. Unarchive it to continue.",
+          delta: "This task is archived. Unarchive it to continue.",
         },
       ]),
     );

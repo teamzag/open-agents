@@ -194,13 +194,13 @@ export async function resolveChatSandboxRuntime(params: {
 
   const session = await getSessionById(params.sessionId);
   if (!session) {
-    throw new Error("Session not found");
+    throw new Error("Task not found");
   }
   if (session.userId !== params.userId) {
     throw new Error("Unauthorized");
   }
   if (session.status === "archived") {
-    throw new Error("Session is archived");
+    throw new Error("Task is archived");
   }
 
   const didSetupWorkspace = !isSandboxActive(session.sandboxState);
@@ -216,7 +216,7 @@ export async function resolveChatSandboxRuntime(params: {
 
   if (session.cloneUrl) {
     if (!session.repoOwner || !session.repoName) {
-      throw new Error("Session is missing repository metadata");
+      throw new Error("Task is missing repository metadata");
     }
 
     const access = await verifyRepoAccess({

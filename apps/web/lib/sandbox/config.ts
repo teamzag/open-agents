@@ -57,11 +57,11 @@ export const SANDBOX_LIFECYCLE_MIN_SLEEP_MS = 5 * 1000;
  * plus the built-in code editor:
  * - 3000: Next.js, Express, Remix
  * - 3001: Zag console Next.js app
+ * - 3002: Zag internal Next.js app
  * - 5173: Vite, SvelteKit
- * - 4321: Astro
  * - 8000: code-server (built-in editor)
  */
-export const DEFAULT_SANDBOX_PORTS = [3000, 3001, 5173, 4321, 8000];
+export const DEFAULT_SANDBOX_PORTS = [3000, 3001, 3002, 5173, 8000];
 export const CODE_SERVER_PORT = 8000;
 
 /** Default working directory for sandboxes, used for path display */

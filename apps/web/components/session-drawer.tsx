@@ -196,7 +196,7 @@ function SessionDrawerInner({
     <>
       <div className="border-b px-4 py-3">
         <div className="flex items-center justify-between">
-          <h2 className="text-base font-semibold">Sessions</h2>
+          <h2 className="text-base font-semibold">Tasks</h2>
         </div>
         <div className="flex gap-1 pt-1">
           <button
@@ -241,7 +241,7 @@ function SessionDrawerInner({
             <SessionDrawerSkeleton />
           ) : displayedSessions.length === 0 ? (
             <div className="py-12 text-center text-sm text-muted-foreground">
-              {tab === "sessions" ? "No sessions yet" : "No archived sessions"}
+              {tab === "sessions" ? "No tasks yet" : "No archived tasks"}
             </div>
           ) : (
             <div className="space-y-4">
@@ -277,7 +277,7 @@ export function SessionDrawer({
       <Drawer open={open} onOpenChange={onOpenChange}>
         <DrawerContent className="h-[85dvh]">
           <DrawerHeader className="sr-only">
-            <DrawerTitle>Sessions</DrawerTitle>
+            <DrawerTitle>Tasks</DrawerTitle>
           </DrawerHeader>
           <SessionDrawerInner
             sessions={sessions}
@@ -297,7 +297,7 @@ export function SessionDrawer({
         className="flex flex-col gap-0 p-0 sm:max-w-sm"
       >
         <SheetHeader className="sr-only">
-          <SheetTitle>Sessions</SheetTitle>
+          <SheetTitle>Tasks</SheetTitle>
         </SheetHeader>
         <SessionDrawerInner
           sessions={sessions}

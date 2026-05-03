@@ -26,7 +26,7 @@ export function AppMockup() {
         <div className="hidden w-44 shrink-0 border-r border-black/[0.06] p-3 sm:block dark:border-white/[0.06]">
           <div className="mb-3 flex items-center justify-between">
             <span className="text-[10px] font-medium uppercase tracking-wider text-black/30 dark:text-white/25">
-              Sessions
+              Tasks
             </span>
             <div className="flex h-4 w-4 items-center justify-center rounded bg-black/[0.04] dark:bg-white/[0.06]">
               <span className="text-[10px] text-black/40 dark:text-white/30">
@@ -127,7 +127,7 @@ export function AppMockup() {
           <div className="border-t border-black/[0.06] p-3 dark:border-white/[0.06]">
             <div className="flex items-center gap-2 rounded-xl bg-black/[0.03] px-3 py-2.5 dark:bg-white/[0.04]">
               <span className="flex-1 text-[11px] text-black/25 dark:text-white/20">
-                Request changes or ask a question…
+                Ask this task-level agent to make changes…
               </span>
               <div className="flex h-5 w-5 items-center justify-center rounded-md bg-black/80 dark:bg-white/80">
                 <svg

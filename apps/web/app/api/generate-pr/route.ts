@@ -41,12 +41,12 @@ export async function POST(req: Request) {
     body;
 
   if (!sessionId) {
-    return Response.json({ error: "Session ID is required" }, { status: 400 });
+    return Response.json({ error: "Task ID is required" }, { status: 400 });
   }
 
   const sessionRecord = await getSessionById(sessionId);
   if (!sessionRecord) {
-    return Response.json({ error: "Session not found" }, { status: 404 });
+    return Response.json({ error: "Task not found" }, { status: 404 });
   }
   if (sessionRecord.userId !== session.user.id) {
     return Response.json({ error: "Forbidden" }, { status: 403 });

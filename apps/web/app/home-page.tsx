@@ -56,7 +56,7 @@ export function HomePage({ hasSessionCookie, lastRepo }: HomePageProps) {
         vercelProject: input.vercelProject,
       });
 
-      router.push(`/sessions/${createdSession.id}/chats/${chat.id}`);
+      router.push(`/tasks/${createdSession.id}/chats/${chat.id}`);
     } catch (error) {
       console.error("Failed to create session:", error);
     } finally {
@@ -65,7 +65,7 @@ export function HomePage({ hasSessionCookie, lastRepo }: HomePageProps) {
   };
 
   const handleSessionClick = (sessionId: string) => {
-    router.push(`/sessions/${sessionId}`);
+    router.push(`/tasks/${sessionId}`);
   };
 
   if (sessionLoading && hasSessionCookie) {
@@ -98,7 +98,7 @@ export function HomePage({ hasSessionCookie, lastRepo }: HomePageProps) {
               </span>
             ) : null}
             <History className="h-4 w-4" />
-            <span>Sessions</span>
+            <span>Tasks</span>
           </button>
           <UserAvatarDropdown />
         </div>

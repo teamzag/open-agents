@@ -63,7 +63,7 @@ export function ClosePrDialog({
             Close & Archive
           </DialogTitle>
           <DialogDescription>
-            Close PR #{session.prNumber} and archive this session. This will not
+            Close PR #{session.prNumber} and archive this task. This will not
             merge any changes.
           </DialogDescription>
         </DialogHeader>

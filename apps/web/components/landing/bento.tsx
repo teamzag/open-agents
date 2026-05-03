@@ -20,7 +20,7 @@ const items: readonly BentoItem[] = [
   {
     id: "003",
     title: "Sandbox",
-    body: "Secure, isolated environments for every session. Full filesystem, network, and runtime access.",
+    body: "Secure, isolated environments for every task. Full filesystem, network, and runtime access.",
   },
   {
     id: "004",

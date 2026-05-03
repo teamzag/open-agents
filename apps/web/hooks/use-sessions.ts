@@ -147,7 +147,7 @@ export function useSessions(options?: {
       };
 
       if (!res.ok || !responseData.session || !responseData.chat) {
-        const message = responseData.error ?? "Failed to create session";
+        const message = responseData.error ?? "Failed to create task";
         toast.error(message);
         throw new Error(message);
       }
@@ -233,7 +233,7 @@ export function useSessions(options?: {
         };
 
         if (!res.ok || !responseData.session) {
-          throw new Error(responseData.error ?? "Failed to rename session");
+          throw new Error(responseData.error ?? "Failed to rename task");
         }
 
         const updatedSession = responseData.session;
@@ -327,7 +327,7 @@ export function useSessions(options?: {
         };
 
         if (!res.ok) {
-          throw new Error(responseData.error ?? "Failed to archive session");
+          throw new Error(responseData.error ?? "Failed to archive task");
         }
 
         if (responseData.session) {
@@ -413,7 +413,7 @@ export function useSessions(options?: {
         };
 
         if (!res.ok || !responseData.session) {
-          throw new Error(responseData.error ?? "Failed to unarchive session");
+          throw new Error(responseData.error ?? "Failed to unarchive task");
         }
 
         const updatedSession = responseData.session;

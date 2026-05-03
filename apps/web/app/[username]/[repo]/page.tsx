@@ -131,5 +131,5 @@ export default async function RepoPage({ params }: RepoPageProps) {
     },
   });
 
-  redirect(`/sessions/${result.session.id}/chats/${result.chat.id}`);
+  redirect(`/tasks/${result.session.id}/chats/${result.chat.id}`);
 }

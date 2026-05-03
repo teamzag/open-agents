@@ -899,7 +899,7 @@ export function SessionChatProvider({
             : current,
         { revalidate: false },
       );
-      throw new Error(data.error ?? "Failed to archive session");
+      throw new Error(data.error ?? "Failed to archive task");
     }
 
     const nextSession = data.session ?? optimisticSession;
@@ -934,7 +934,7 @@ export function SessionChatProvider({
     const data = (await res.json()) as { session?: Session; error?: string };
 
     if (!res.ok) {
-      throw new Error(data.error ?? "Failed to unarchive session");
+      throw new Error(data.error ?? "Failed to unarchive task");
     }
 
     const nextSession: Session = data.session ?? {
@@ -971,7 +971,7 @@ export function SessionChatProvider({
       const data = (await res.json()) as { session?: Session; error?: string };
 
       if (!res.ok) {
-        throw new Error(data.error ?? "Failed to update session title");
+        throw new Error(data.error ?? "Failed to update task title");
       }
 
       const nextSession = data.session ?? { ...sessionRecord, title };

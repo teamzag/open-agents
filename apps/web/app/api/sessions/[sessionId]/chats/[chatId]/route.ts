@@ -166,7 +166,7 @@ export async function DELETE(_req: Request, context: RouteContext) {
   const chats = await getChatsBySessionId(sessionId);
   if (chats.length <= 1) {
     return Response.json(
-      { error: "Cannot delete the only chat in a session" },
+      { error: "Cannot delete the only chat in a task" },
       { status: 400 },
     );
   }

@@ -125,7 +125,7 @@ export async function commitChanges(params: {
   // session ownership
   const sessionRecord = await getSessionById(sessionId);
   if (!sessionRecord) {
-    return { committed: false, pushed: false, error: "Session not found" };
+    return { committed: false, pushed: false, error: "Task not found" };
   }
   if (sessionRecord.userId !== session.user.id) {
     return { committed: false, pushed: false, error: "Forbidden" };

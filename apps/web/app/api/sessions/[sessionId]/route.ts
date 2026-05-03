@@ -30,7 +30,7 @@ export async function GET(
   const existingSession = await getSessionById(sessionId);
 
   if (!existingSession) {
-    return Response.json({ error: "Session not found" }, { status: 404 });
+    return Response.json({ error: "Task not found" }, { status: 404 });
   }
 
   if (existingSession.userId !== session.user.id) {
@@ -53,7 +53,7 @@ export async function PATCH(
   const existingSession = await getSessionById(sessionId);
 
   if (!existingSession) {
-    return Response.json({ error: "Session not found" }, { status: 404 });
+    return Response.json({ error: "Task not found" }, { status: 404 });
   }
 
   if (existingSession.userId !== session.user.id) {
@@ -81,7 +81,7 @@ export async function PATCH(
     return Response.json(
       {
         error:
-          "Sandbox is still being paused for this archived session. Please try unarchiving again in a few seconds.",
+          "Sandbox is still being paused for this archived task. Please try unarchiving again in a few seconds.",
       },
       { status: 409 },
     );
@@ -114,7 +114,7 @@ export async function PATCH(
     : await updateSession(sessionId, updatePayload);
 
   if (!updatedSession) {
-    return Response.json({ error: "Session not found" }, { status: 404 });
+    return Response.json({ error: "Task not found" }, { status: 404 });
   }
 
   return Response.json({ session: updatedSession });
@@ -133,7 +133,7 @@ export async function DELETE(
   const existingSession = await getSessionById(sessionId);
 
   if (!existingSession) {
-    return Response.json({ error: "Session not found" }, { status: 404 });
+    return Response.json({ error: "Task not found" }, { status: 404 });
   }
 
   if (existingSession.userId !== session.user.id) {

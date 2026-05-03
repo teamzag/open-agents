@@ -709,8 +709,8 @@ export function PreferencesSection() {
           <div className="space-y-1">
             <Label>Global Skills</Label>
             <p className="text-xs text-muted-foreground">
-              Skills from GitHub installed outside the repo for every new
-              session. Repo skills with the same name take precedence.
+              Skills from GitHub installed outside the repo for every new task.
+              Repo skills with the same name take precedence.
             </p>
           </div>
 

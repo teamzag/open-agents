@@ -36,7 +36,7 @@ function parseLaunchResponse(body: unknown): DevServerLaunchResponse | null {
     return null;
   }
 
-  const { packagePath, port, url } = body;
+  const { packagePath, port, url, urls } = body;
   if (
     typeof packagePath !== "string" ||
     typeof port !== "number" ||
@@ -46,10 +46,37 @@ function parseLaunchResponse(body: unknown): DevServerLaunchResponse | null {
     return null;
   }
 
+  const parsedUrls = Array.isArray(urls)
+    ? urls.flatMap((entry) => {
+        if (!isRecord(entry)) {
+          return [];
+        }
+        if (
+          typeof entry.label !== "string" ||
+          typeof entry.packagePath !== "string" ||
+          typeof entry.port !== "number" ||
+          !Number.isFinite(entry.port) ||
+          typeof entry.url !== "string"
+        ) {
+          return [];
+        }
+
+        return [
+          {
+            label: entry.label,
+            packagePath: entry.packagePath,
+            port: entry.port,
+            url: entry.url,
+          },
+        ];
+      })
+    : undefined;
+
   return {
     packagePath,
     port,
     url,
+    ...(parsedUrls && parsedUrls.length > 0 ? { urls: parsedUrls } : {}),
   };
 }
 
@@ -149,9 +176,11 @@ export function useDevServer({
 
   const menuLabel =
     state.status === "ready"
-      ? state.info.packagePath === "root"
-        ? "Open Dev Server"
-        : `Open ${state.info.packagePath}`
+      ? state.info.urls && state.info.urls.length > 1
+        ? "Open Dev Servers"
+        : state.info.packagePath === "root"
+          ? "Open Dev Server"
+          : `Open ${state.info.packagePath}`
       : state.status === "starting"
         ? "Starting Dev Server..."
         : state.status === "stopping"

@@ -36,7 +36,7 @@ export default async function CodespaceLayout({
 
   const requestHost = (await headers()).get("host") ?? "";
   if (isManagedTemplateTrialUser(session, requestHost)) {
-    redirect(`/sessions/${sessionId}`);
+    redirect(`/tasks/${sessionId}`);
   }
 
   return (

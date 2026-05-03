@@ -159,7 +159,7 @@ describe("/api/sessions POST vercel project linking", () => {
 
     expect(response.status).toBe(403);
     expect(body.error).toBe(
-      "This hosted deployment includes 1 trial session for non-Vercel accounts. Deploy your own copy to start more.",
+      "This hosted deployment includes 1 trial task for non-Vercel accounts. Deploy your own copy to start more.",
     );
     expect(createCalls).toHaveLength(0);
   });

@@ -140,7 +140,7 @@ export async function discardChanges(params: {
 
   const sessionRecord = await getSessionById(sessionId);
   if (!sessionRecord) {
-    throw new Error("Session not found");
+    throw new Error("Task not found");
   }
   if (sessionRecord.userId !== session.user.id) {
     throw new Error("Forbidden");

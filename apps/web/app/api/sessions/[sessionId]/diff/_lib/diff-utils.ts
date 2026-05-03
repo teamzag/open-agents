@@ -149,6 +149,7 @@ export function buildUntrackedDiffFile(
   content: string | null,
 ): { file: DiffFileShape; lineCount: number } | null {
   if (content === null) return null;
+  if (content.includes("\0")) return null;
 
   if (content.length === 0) {
     return {
@@ -201,6 +202,12 @@ ${diffLines}${noFinalNewlineMarker}`;
  * We still list them (with stats) but skip fetching the actual patch.
  */
 const GENERATED_FILE_PATTERNS = [
+  /(?:^|\/)\.next(?:\/|$)/,
+  /(?:^|\/)\.swc(?:\/|$)/,
+  /(?:^|\/)node_modules(?:\/|$)/,
+  /(?:^|\/)coverage(?:\/|$)/,
+  /(?:^|\/)dist(?:\/|$)/,
+  /(?:^|\/)build(?:\/|$)/,
   /(?:^|\/)bun\.lockb?$/,
   /(?:^|\/)bun\.lock$/,
   /(?:^|\/)package-lock\.json$/,
@@ -212,6 +219,7 @@ const GENERATED_FILE_PATTERNS = [
   /(?:^|\/)poetry\.lock$/,
   /(?:^|\/)Pipfile\.lock$/,
   /(?:^|\/)go\.sum$/,
+  /\.wasmer-v\d+$/,
 ];
 
 export function isGeneratedFile(filePath: string): boolean {

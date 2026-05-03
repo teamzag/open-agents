@@ -29,9 +29,7 @@ export function ChatSwitcherDropdown() {
       void persisted.catch((err) => {
         console.error("Failed to create chat:", err);
         if (previousChatId && params.sessionId) {
-          router.replace(
-            `/sessions/${params.sessionId}/chats/${previousChatId}`,
-          );
+          router.replace(`/tasks/${params.sessionId}/chats/${previousChatId}`);
         }
       });
     } catch (err) {

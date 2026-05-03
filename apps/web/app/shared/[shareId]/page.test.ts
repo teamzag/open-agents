@@ -177,7 +177,7 @@ describe("/shared/[shareId] page", () => {
     };
 
     expect(element.props.ownerSessionHref).toBe(
-      "/sessions/session-1/chats/chat-1",
+      "/tasks/session-1/chats/chat-1",
     );
   });
 

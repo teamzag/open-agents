@@ -201,9 +201,9 @@ export function SessionHeader() {
             <TooltipTrigger asChild>
               <Button
                 variant="ghost"
-                size="icon"
+                size="sm"
                 className={cn(
-                  "relative h-7 w-7 shrink-0",
+                  "relative h-7 shrink-0 gap-1.5 px-2 text-xs",
                   gitPanelOpen && "bg-accent text-accent-foreground",
                 )}
                 onClick={handleGitPanelToggle}
@@ -211,6 +211,7 @@ export function SessionHeader() {
                 <GitIcon
                   className={cn("h-4 w-4", !gitPanelOpen && iconColor)}
                 />
+                <span>Source Control</span>
                 {!gitPanelOpen && hasActionNeeded && (
                   <span className="absolute right-0.5 top-0.5 h-2 w-2 rounded-full bg-amber-500" />
                 )}

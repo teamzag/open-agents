@@ -43,7 +43,7 @@ export function UsageInsightsSection({ insights }: UsageInsightsSectionProps) {
         <MetricCard
           label="Merge rate"
           value={formatPercent(insights.pr.mergeRate)}
-          detail={`${insights.pr.sessionsWithPrCount.toLocaleString()} sessions with PRs`}
+          detail={`${insights.pr.sessionsWithPrCount.toLocaleString()} tasks with PRs`}
         />
         <MetricCard
           label="Largest turn"

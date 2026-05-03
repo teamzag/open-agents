@@ -332,7 +332,7 @@ describe("/api/sessions/[sessionId]/chats/[chatId]", () => {
     const body = (await response.json()) as { error: string };
 
     expect(response.status).toBe(400);
-    expect(body.error).toBe("Cannot delete the only chat in a session");
+    expect(body.error).toBe("Cannot delete the only chat in a task");
     expect(deleteChatCalls).toHaveLength(0);
   });
 

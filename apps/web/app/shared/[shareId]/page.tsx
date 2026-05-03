@@ -124,7 +124,7 @@ export default async function SharedPage({ params }: SharedPageProps) {
   );
   const ownerSessionHref =
     viewerSession?.user?.id === session.userId
-      ? `/sessions/${sharedChat.sessionId}/chats/${sharedChat.id}`
+      ? `/tasks/${sharedChat.sessionId}/chats/${sharedChat.id}`
       : null;
 
   return (

@@ -102,7 +102,7 @@ export function SessionLayoutShell({
   } = useSessionChats(sessionId, { initialData: initialChatsData });
 
   const getChatHref = useCallback(
-    (chatId: string) => `/sessions/${sessionId}/chats/${chatId}`,
+    (chatId: string) => `/tasks/${sessionId}/chats/${chatId}`,
     [sessionId],
   );
 

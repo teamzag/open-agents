@@ -195,7 +195,7 @@ function getSessionStatusLabel(session: SessionWithUnread): {
   const hasDiff = session.linesAdded || session.linesRemoved;
   if (session.branch && hasDiff)
     return { text: "Needs attention", prNumber: null };
-  if (session.branch) return { text: "New session", prNumber: null };
+  if (session.branch) return { text: "New task", prNumber: null };
   if (session.status === "running")
     return { text: "Setting up", prNumber: null };
   if (session.status === "completed")
@@ -480,7 +480,7 @@ const SessionRow = memo(function SessionRow({
             <button
               type="button"
               className="rounded p-0.5 text-muted-foreground/60 transition-colors hover:text-muted-foreground"
-              aria-label="Rename session"
+              aria-label="Rename task"
               onClick={(event) => {
                 event.stopPropagation();
                 if (hoverTimeoutRef.current) {
@@ -496,7 +496,7 @@ const SessionRow = memo(function SessionRow({
             </button>
           </TooltipTrigger>
           <TooltipContent side="top" sideOffset={4}>
-            Rename session
+            Rename task
           </TooltipContent>
         </Tooltip>
       ) : null}
@@ -506,9 +506,7 @@ const SessionRow = memo(function SessionRow({
             type="button"
             className="rounded p-0.5 text-muted-foreground/60 transition-colors hover:text-muted-foreground"
             aria-label={
-              session.status === "archived"
-                ? "Unarchive session"
-                : "Archive session"
+              session.status === "archived" ? "Unarchive task" : "Archive task"
             }
             onClick={(event) => {
               event.stopPropagation();
@@ -523,9 +521,7 @@ const SessionRow = memo(function SessionRow({
           </button>
         </TooltipTrigger>
         <TooltipContent side="top" sideOffset={4}>
-          {session.status === "archived"
-            ? "Unarchive session"
-            : "Archive session"}
+          {session.status === "archived" ? "Unarchive task" : "Archive task"}
         </TooltipContent>
       </Tooltip>
     </>
@@ -738,7 +734,7 @@ export function InboxSidebar({
         const data = (await res.json()) as ArchivedSessionsResponse;
 
         if (!res.ok) {
-          throw new Error(data.error ?? "Failed to load archived sessions");
+          throw new Error(data.error ?? "Failed to load archived tasks");
         }
 
         setArchivedSessions((current) => {
@@ -759,7 +755,7 @@ export function InboxSidebar({
         const message =
           error instanceof Error
             ? error.message
-            : "Failed to load archived sessions";
+            : "Failed to load archived tasks";
         setArchivedSessionsError(message);
       } finally {
         archivedRequestInFlightRef.current = false;
@@ -967,7 +963,7 @@ export function InboxSidebar({
       <div className="border-b border-border p-3">
         <div className="mb-3 flex items-center justify-between">
           <div className="flex items-center px-2 py-1.5 text-sm text-primary">
-            <span>Sessions</span>
+            <span>Tasks</span>
           </div>
           <Button
             type="button"
@@ -1035,8 +1031,8 @@ export function InboxSidebar({
         ) : displayedSessions.length === 0 ? (
           <div className="px-4 py-12 text-center text-sm text-muted-foreground">
             {showArchived
-              ? (archivedSessionsError ?? "No archived sessions")
-              : "No sessions yet"}
+              ? (archivedSessionsError ?? "No archived tasks")
+              : "No tasks yet"}
             {showArchived && archivedSessionsError ? (
               <div className="mt-3">
                 <Button
@@ -1111,7 +1107,7 @@ export function InboxSidebar({
                                   );
                                 }}
                                 className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/70 transition-colors hover:text-foreground"
-                                aria-label={`Create session from branch for ${group.label}`}
+                                aria-label={`Create task from branch for ${group.label}`}
                               >
                                 <GitBranch className="h-3 w-3" />
                               </button>
@@ -1132,13 +1128,13 @@ export function InboxSidebar({
                                   );
                                 }}
                                 className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/70 transition-colors hover:text-foreground"
-                                aria-label={`Create session for ${group.label}`}
+                                aria-label={`Create task for ${group.label}`}
                               >
                                 <Plus className="h-3 w-3" />
                               </button>
                             </TooltipTrigger>
                             <TooltipContent side="top" sideOffset={4}>
-                              Create session
+                              Create task
                             </TooltipContent>
                           </Tooltip>
                         </span>
@@ -1194,8 +1190,8 @@ export function InboxSidebar({
                   {archivedSessionsLoading
                     ? "Loading..."
                     : archivedSessionsError
-                      ? "Retry loading archived sessions"
-                      : "Load more archived sessions"}
+                      ? "Retry loading archived tasks"
+                      : "Load more archived tasks"}
                 </Button>
               </div>
             ) : null}
@@ -1277,9 +1273,9 @@ export function InboxSidebar({
       >
         <DialogContent showCloseButton={false}>
           <DialogHeader>
-            <DialogTitle>Archive session?</DialogTitle>
+            <DialogTitle>Archive task?</DialogTitle>
             <DialogDescription>
-              This will stop the sandbox and archive the session. You can still
+              This will stop the sandbox and archive the task. You can still
               view it in the archive tab.
             </DialogDescription>
           </DialogHeader>

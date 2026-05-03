@@ -84,8 +84,8 @@ export async function generateMetadata({
   const sessionRecord = await getSessionByIdCached(sessionId);
 
   return {
-    title: sessionRecord?.title ?? `Session ${sessionId}`,
-    description: "Review session progress, chats, and outputs.",
+    title: sessionRecord?.title ?? `Task ${sessionId}`,
+    description: "Review task progress, chats, and outputs.",
   };
 }
 
@@ -129,7 +129,7 @@ export default async function SessionChatPage({
 
   if (!chat) {
     if (isOptimisticChatId(chatId)) {
-      redirect(`/sessions/${sessionId}`);
+      redirect(`/tasks/${sessionId}`);
     }
     notFound();
   }

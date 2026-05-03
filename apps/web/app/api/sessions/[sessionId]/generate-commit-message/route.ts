@@ -24,7 +24,7 @@ export async function POST(
   const { sessionId } = await params;
   const dbSession = await getSessionById(sessionId);
   if (!dbSession || dbSession.userId !== session.user.id) {
-    return Response.json({ error: "Session not found" }, { status: 404 });
+    return Response.json({ error: "Task not found" }, { status: 404 });
   }
 
   if (!isSandboxActive(dbSession.sandboxState)) {

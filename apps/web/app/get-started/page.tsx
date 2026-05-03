@@ -38,7 +38,7 @@ export default async function GetStartedPage({
   const onboarding = await needsOnboarding(session.user.id);
 
   if (!onboarding && requestedStep !== "github") {
-    redirect("/sessions");
+    redirect("/tasks");
   }
 
   return <GetStartedFlow />;

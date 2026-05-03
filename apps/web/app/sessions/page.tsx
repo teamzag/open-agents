@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import { SessionsIndexShell } from "./sessions-index-shell";
 
 export const metadata: Metadata = {
-  title: "Sessions",
-  description: "View and manage your sessions.",
+  title: "Tasks",
+  description: "View and manage your tasks.",
 };
 
 export default function SessionsPage() {

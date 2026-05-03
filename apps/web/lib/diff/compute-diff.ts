@@ -47,6 +47,19 @@ export class DiffComputationError extends Error {
   }
 }
 
+function cacheDiff(sessionId: string, response: DiffResponse) {
+  updateSession(sessionId, {
+    cachedDiff: response,
+    cachedDiffUpdatedAt: new Date(),
+    linesAdded: response.summary.totalAdditions,
+    linesRemoved: response.summary.totalDeletions,
+  }).catch((err) => {
+    const message =
+      err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+    console.error("Failed to cache diff:", message);
+  });
+}
+
 export async function computeAndCacheDiff(params: {
   sandbox: Sandbox;
   sessionId: string;
@@ -107,7 +120,8 @@ export async function computeAndCacheDiff(params: {
     const untrackedFiles = untrackedResult.stdout
       .trim()
       .split("\n")
-      .filter((line) => line.length > 0);
+      .map(unescapeGitPath)
+      .filter((line) => line.length > 0 && !isGeneratedFile(line));
 
     const untrackedFileContents = await Promise.all(
       untrackedFiles.map(async (filePath) => {
@@ -141,12 +155,7 @@ export async function computeAndCacheDiff(params: {
       },
     };
 
-    updateSession(sessionId, {
-      cachedDiff: response,
-      cachedDiffUpdatedAt: new Date(),
-      linesAdded: response.summary.totalAdditions,
-      linesRemoved: response.summary.totalDeletions,
-    }).catch((err) => console.error("Failed to cache diff:", err));
+    cacheDiff(sessionId, response);
 
     return response;
   }
@@ -304,7 +313,8 @@ export async function computeAndCacheDiff(params: {
   const untrackedFiles = untrackedResult.stdout
     .trim()
     .split("\n")
-    .filter((line) => line.length > 0);
+    .map(unescapeGitPath)
+    .filter((line) => line.length > 0 && !isGeneratedFile(line));
 
   // Fetch content for untracked files to generate diff
   const untrackedFileContents = await Promise.all(
@@ -361,12 +371,7 @@ export async function computeAndCacheDiff(params: {
   };
 
   // Cache diff for offline viewing (fire-and-forget)
-  updateSession(sessionId, {
-    cachedDiff: response,
-    cachedDiffUpdatedAt: new Date(),
-    linesAdded: response.summary.totalAdditions,
-    linesRemoved: response.summary.totalDeletions,
-  }).catch((err) => console.error("Failed to cache diff:", err));
+  cacheDiff(sessionId, response);
 
   return response;
 }

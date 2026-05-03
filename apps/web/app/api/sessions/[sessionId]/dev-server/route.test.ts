@@ -2,12 +2,16 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 const DEV_SERVER_PID_FILE =
   "/vercel/sandbox/apps/web/.open-agents-dev-server-3000.pid";
+const ZAG_DEV_SERVER_PID_FILE =
+  "/vercel/sandbox/.open-agents-dev-server-3000.pid";
 const DEV_SERVER_STATE_FILE =
   "/vercel/sandbox/.open-agents-dev-server-state.json";
 const RUNNING_PID = "4242";
 
 const currentSessionRecord = {
   userId: "user-1",
+  repoOwner: "vercel",
+  repoName: "open-agents",
   sandboxState: {
     type: "vercel" as const,
     sandboxId: "sandbox-1",
@@ -26,6 +30,7 @@ let fileContents = new Map<string, string>();
 let existingPaths = new Set<string>();
 let pathEntries = new Map<string, MockPathEntry>();
 let runningPids = new Set<string>();
+let unavailableDomainPorts = new Set<number>();
 let lastLaunchCommand: string | null = null;
 let lastLaunchCwd: string | null = null;
 let currentMtimeMs = 1_000;
@@ -190,7 +195,13 @@ const execDetachedMock = mock(async (command: string, cwd: string) => {
 
   return { commandId: "cmd-1" };
 });
-const domainMock = mock((port: number) => `https://sb-${port}.vercel.run`);
+const domainMock = mock((port: number) => {
+  if (unavailableDomainPorts.has(port)) {
+    throw new Error(`No route for port ${port}`);
+  }
+
+  return `https://sb-${port}.vercel.run`;
+});
 const connectSandboxMock = mock(async () => ({
   workingDirectory: "/vercel/sandbox",
   exec: execMock,
@@ -230,6 +241,9 @@ describe("/api/sessions/[sessionId]/dev-server", () => {
     lastLaunchCommand = null;
     lastLaunchCwd = null;
     currentSessionRecord.sandboxState.expiresAt = Date.now() + 60_000;
+    currentSessionRecord.repoOwner = "vercel";
+    currentSessionRecord.repoName = "open-agents";
+    unavailableDomainPorts = new Set<number>();
     requireAuthenticatedUserMock.mockClear();
     requireOwnedSessionWithSandboxGuardMock.mockClear();
     connectSandboxMock.mockClear();
@@ -265,7 +279,7 @@ describe("/api/sessions/[sessionId]/dev-server", () => {
     });
     expect(connectSandboxMock).toHaveBeenCalledWith(
       currentSessionRecord.sandboxState,
-      { ports: [3000, 3001, 5173, 4321, 8000] },
+      { env: undefined, ports: [3000, 3001, 3002, 5173, 8000] },
     );
     expect(execDetachedMock).toHaveBeenCalledTimes(1);
     expect(lastLaunchCwd).toBe("/vercel/sandbox/apps/web");
@@ -285,6 +299,131 @@ describe("/api/sessions/[sessionId]/dev-server", () => {
     expect(lastLaunchCommand).toContain("bun install");
     expect(lastLaunchCommand).toContain("bun run dev");
     expect(lastLaunchCommand).toContain("--hostname 0.0.0.0 --port 3000");
+  });
+
+  test("launches root pnpm dev and returns Zag app URLs for teamzag/zag", async () => {
+    const { POST } = await routeModulePromise;
+    currentSessionRecord.repoOwner = "teamzag";
+    currentSessionRecord.repoName = "zag";
+
+    setMockFile(
+      "/vercel/sandbox/package.json",
+      JSON.stringify({
+        packageManager: "pnpm@9.15.4",
+        scripts: {
+          dev: "turbo dev",
+        },
+      }),
+    );
+    setMockFile("/vercel/sandbox/pnpm-lock.yaml", "");
+
+    const response = await POST(
+      new Request("http://localhost/api/sessions/session-1/dev-server", {
+        method: "POST",
+      }),
+      createRouteContext(),
+    );
+    const body = (await response.json()) as {
+      packagePath: string;
+      port: number;
+      url: string;
+      urls: Array<{
+        label: string;
+        packagePath: string;
+        port: number;
+        url: string;
+      }>;
+    };
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual({
+      packagePath: "root",
+      port: 3000,
+      url: "https://sb-3000.vercel.run",
+      urls: [
+        {
+          label: "Landing",
+          packagePath: "apps/landing",
+          port: 3000,
+          url: "https://sb-3000.vercel.run",
+        },
+        {
+          label: "Console",
+          packagePath: "apps/console",
+          port: 3001,
+          url: "https://sb-3001.vercel.run",
+        },
+        {
+          label: "Internal",
+          packagePath: "apps/internal",
+          port: 3002,
+          url: "https://sb-3002.vercel.run",
+        },
+      ],
+    });
+    expect(execDetachedMock).toHaveBeenCalledTimes(1);
+    expect(lastLaunchCwd).toBe("/vercel/sandbox");
+    expect(existingPaths.has(ZAG_DEV_SERVER_PID_FILE)).toBe(true);
+    expect(fileContents.get(DEV_SERVER_STATE_FILE)).toBe(
+      JSON.stringify({ packageDir: ".", port: 3000 }),
+    );
+
+    if (!lastLaunchCommand) {
+      throw new Error("Expected execDetached to receive a launch command");
+    }
+
+    expect(lastLaunchCommand).toContain(ZAG_DEV_SERVER_PID_FILE);
+    expect(lastLaunchCommand).toContain("pnpm install");
+    expect(lastLaunchCommand).toContain("pnpm dev");
+  });
+
+  test("skips Zag app URLs when the sandbox does not expose their ports", async () => {
+    const { POST } = await routeModulePromise;
+    currentSessionRecord.repoOwner = "teamzag";
+    currentSessionRecord.repoName = "zag";
+    unavailableDomainPorts.add(3002);
+
+    setMockFile(
+      "/vercel/sandbox/package.json",
+      JSON.stringify({
+        packageManager: "pnpm@9.15.4",
+        scripts: {
+          dev: "turbo dev",
+        },
+      }),
+    );
+    setMockFile("/vercel/sandbox/pnpm-lock.yaml", "");
+
+    const response = await POST(
+      new Request("http://localhost/api/sessions/session-1/dev-server", {
+        method: "POST",
+      }),
+      createRouteContext(),
+    );
+    const body = (await response.json()) as {
+      urls: Array<{
+        label: string;
+        packagePath: string;
+        port: number;
+        url: string;
+      }>;
+    };
+
+    expect(response.status).toBe(200);
+    expect(body.urls).toEqual([
+      {
+        label: "Landing",
+        packagePath: "apps/landing",
+        port: 3000,
+        url: "https://sb-3000.vercel.run",
+      },
+      {
+        label: "Console",
+        packagePath: "apps/console",
+        port: 3001,
+        url: "https://sb-3001.vercel.run",
+      },
+    ]);
   });
 
   test("returns the existing preview URL without relaunching when the dev server is already running", async () => {

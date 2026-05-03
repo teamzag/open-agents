@@ -13,7 +13,6 @@ import {
   ArrowDown,
   ArrowUp,
   Check,
-  Code2,
   Copy,
   ExternalLink,
   GitBranch,
@@ -33,6 +32,7 @@ import {
   X,
 } from "lucide-react";
 import dynamic from "next/dynamic";
+import { VscVscode } from "react-icons/vsc";
 import { useRouter } from "next/navigation";
 import {
   useCallback,
@@ -43,6 +43,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { createPortal } from "react-dom";
+import { toast } from "sonner";
 import useSWR from "swr";
 import type { ChatRefreshResponse } from "@/app/api/sessions/[sessionId]/chats/[chatId]/route";
 import type { MergePullRequestResult } from "@/lib/github/actions/pr";
@@ -784,7 +785,7 @@ function SandboxInputOverlay({
           <span className="text-sm">
             {snapshotPending
               ? "Sandbox pause in progress. Unarchive will be available in a few seconds."
-              : "This session is archived. Unarchive it to resume."}
+              : "This task is archived. Unarchive it to resume."}
           </span>
         </div>
       </div>
@@ -1288,7 +1289,7 @@ export function SessionChatContent({
       try {
         const { persisted } = forkChat(chatInfo.id, messageId);
         const forkedChat = await persisted;
-        router.push(`/sessions/${session.id}/chats/${forkedChat.id}`, {
+        router.push(`/tasks/${session.id}/chats/${forkedChat.id}`, {
           scroll: false,
         });
       } catch (forkError) {
@@ -2696,6 +2697,20 @@ export function SessionChatContent({
     sessionId: session.id,
     canRun: canRunDevServer,
   });
+  const devServerUrls =
+    devServer.state.status === "ready"
+      ? (devServer.state.info.urls ?? [
+          {
+            label:
+              devServer.state.info.packagePath === "root"
+                ? "Open Dev"
+                : devServer.state.info.packagePath,
+            packagePath: devServer.state.info.packagePath,
+            port: devServer.state.info.port,
+            url: devServer.state.info.url,
+          },
+        ])
+      : [];
   const codeEditor = useCodeEditor({
     sessionId: session.id,
     canRun: canRunDevServer && canUseCodeEditor,
@@ -2954,14 +2969,14 @@ export function SessionChatContent({
 
       try {
         await archiveSession();
-        router.push("/sessions");
+        router.push("/tasks");
       } catch (archiveError) {
         const archiveMessage =
           archiveError instanceof Error
             ? archiveError.message
-            : "Failed to archive session";
+            : "Failed to archive task";
         throw new Error(
-          `Pull request merged, but archiving the session failed: ${archiveMessage}`,
+          `Pull request merged, but archiving the task failed: ${archiveMessage}`,
           {
             cause: archiveError,
           },
@@ -2980,14 +2995,14 @@ export function SessionChatContent({
 
       try {
         await archiveSession();
-        router.push("/sessions");
+        router.push("/tasks");
       } catch (archiveError) {
         const archiveMessage =
           archiveError instanceof Error
             ? archiveError.message
-            : "Failed to archive session";
+            : "Failed to archive task";
         throw new Error(
-          `Pull request closed, but archiving the session failed: ${archiveMessage}`,
+          `Pull request closed, but archiving the task failed: ${archiveMessage}`,
           {
             cause: archiveError,
           },
@@ -3085,8 +3100,8 @@ export function SessionChatContent({
                     <span className="hidden sm:inline-flex">
                       <Button
                         variant="ghost"
-                        size="icon"
-                        className="h-7 w-7"
+                        size="sm"
+                        className="h-7 gap-1.5 px-2 text-xs"
                         onClick={() => void handleOpenEditorFromUi()}
                         disabled={isCodeEditorActionDisabled}
                       >
@@ -3094,8 +3109,9 @@ export function SessionChatContent({
                         isSandboxStartupBusy ? (
                           <Loader2 className="h-3.5 w-3.5 animate-spin" />
                         ) : (
-                          <Code2 className="h-3.5 w-3.5" />
+                          <VscVscode className="h-3.5 w-3.5" />
                         )}
+                        <span>Open VS Code</span>
                       </Button>
                     </span>
                   </TooltipTrigger>
@@ -3118,16 +3134,17 @@ export function SessionChatContent({
                     <span className="hidden sm:inline-flex">
                       <Button
                         variant="ghost"
-                        size="icon"
-                        className="h-7 w-7"
+                        size="sm"
+                        className="h-7 gap-1.5 px-2 text-xs"
                         onClick={() => void handleOpenEditorFromUi()}
                         disabled={isCodeEditorActionDisabled}
                       >
                         {codeEditor.state.status === "starting" ? (
                           <Loader2 className="h-3.5 w-3.5 animate-spin" />
                         ) : (
-                          <Code2 className="h-3.5 w-3.5" />
+                          <VscVscode className="h-3.5 w-3.5" />
                         )}
+                        <span>Open VS Code</span>
                       </Button>
                     </span>
                   </TooltipTrigger>
@@ -3141,30 +3158,40 @@ export function SessionChatContent({
                 <div className="hidden h-7 items-center sm:flex">
                   {devServer.state.status === "ready" ? (
                     <div className="flex items-center rounded-md border border-border px-0.5">
+                      {devServerUrls.map((target) => (
+                        <Tooltip key={`${target.packagePath}:${target.port}`}>
+                          <TooltipTrigger asChild>
+                            <Button
+                              asChild
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 gap-1 px-1.5 text-xs"
+                            >
+                              <a
+                                href={target.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              >
+                                <Globe className="h-3 w-3" />
+                                <span>{target.label}</span>
+                              </a>
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom">
+                            {`${target.packagePath} on port ${target.port}`}
+                          </TooltipContent>
+                        </Tooltip>
+                      ))}
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <Button
                             variant="ghost"
-                            size="icon"
-                            className="h-5 w-5 rounded-sm"
-                            onClick={() => void devServer.handlePrimaryAction()}
-                          >
-                            <Globe className="h-3 w-3" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent side="bottom">
-                          Open dev server
-                        </TooltipContent>
-                      </Tooltip>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-5 w-5 rounded-sm"
+                            size="sm"
+                            className="h-6 gap-1 px-1.5 text-xs"
                             onClick={() => void devServer.handleStopAction()}
                           >
                             <Square className="h-2.5 w-2.5 fill-current" />
+                            <span>Stop</span>
                           </Button>
                         </TooltipTrigger>
                         <TooltipContent side="bottom">
@@ -3178,11 +3205,16 @@ export function SessionChatContent({
                       <TooltipTrigger asChild>
                         <Button
                           variant="ghost"
-                          size="icon"
-                          className="h-7 w-7"
+                          size="sm"
+                          className="h-7 gap-1.5 px-2 text-xs"
                           disabled
                         >
                           <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          <span>
+                            {devServer.state.status === "starting"
+                              ? "Starting"
+                              : "Stopping"}
+                          </span>
                         </Button>
                       </TooltipTrigger>
                       <TooltipContent side="bottom">
@@ -3196,11 +3228,12 @@ export function SessionChatContent({
                       <TooltipTrigger asChild>
                         <Button
                           variant="ghost"
-                          size="icon"
-                          className="h-7 w-7"
+                          size="sm"
+                          className="h-7 gap-1.5 px-2 text-xs"
                           onClick={() => void devServer.handlePrimaryAction()}
                         >
                           <Play className="h-3.5 w-3.5 fill-current" />
+                          <span>pnpm dev</span>
                         </Button>
                       </TooltipTrigger>
                       <TooltipContent side="bottom">
@@ -3217,8 +3250,8 @@ export function SessionChatContent({
                   <Button
                     asChild
                     variant="ghost"
-                    size="icon"
-                    className="hidden h-7 w-7 sm:inline-flex"
+                    size="sm"
+                    className="hidden h-7 gap-1.5 px-2 text-xs sm:inline-flex"
                   >
                     <a
                       href={previewDeploymentTargetUrl}
@@ -3242,6 +3275,7 @@ export function SessionChatContent({
                             "animate-pulse text-amber-500",
                         )}
                       />
+                      <span>Preview</span>
                     </a>
                   </Button>
                 </TooltipTrigger>
@@ -3275,10 +3309,10 @@ export function SessionChatContent({
         >
           <DialogContent showCloseButton={false}>
             <DialogHeader>
-              <DialogTitle>Archive session?</DialogTitle>
+              <DialogTitle>Archive task?</DialogTitle>
               <DialogDescription>
-                This will stop the sandbox and archive the session. You can
-                still view it in the archive tab.
+                This will stop the sandbox and archive the task. You can still
+                view it in the archive tab.
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
@@ -3291,7 +3325,7 @@ export function SessionChatContent({
                     void archiveSession().catch((error: unknown) => {
                       console.error("Failed to archive session:", error);
                     });
-                    router.push("/sessions");
+                    router.push("/tasks");
                   }}
                 >
                   Archive
@@ -3339,56 +3373,49 @@ export function SessionChatContent({
                               <div className="flex max-w-md flex-col items-center gap-4 text-center">
                                 <div className="space-y-1.5">
                                   <p className="text-sm font-medium text-foreground">
-                                    This is the session-level agent. It works on
-                                    the sandbox through remote execution: file
-                                    reads, edits, search, and shell commands.
+                                    This agent runs outside your session. It can
+                                    reach in to read files, edit code, and run
+                                    commands.
                                   </p>
                                   <p className="text-sm text-muted-foreground">
-                                    To run an agent from inside the sandbox,
-                                    open the editor and launch Claude Code or
-                                    Codex in the terminal.
+                                    To work inside the session, open the editor
+                                    in your browser. You can also attach from
+                                    your local Mac with cmux or Zed Multiplayer.
                                   </p>
                                 </div>
-                                {!isArchived && canUseCodeEditor && (
-                                  <div className="flex flex-wrap items-center justify-center gap-2">
-                                    {!isSandboxActive && (
-                                      <Button
-                                        type="button"
-                                        size="sm"
-                                        variant="outline"
-                                        onClick={() =>
-                                          void handleStartSandboxFromUi()
-                                        }
-                                        disabled={!canStartSandboxFromUi}
-                                      >
-                                        {isSandboxStartupBusy ? (
-                                          <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-                                        ) : (
-                                          <RefreshCw className="mr-2 h-3.5 w-3.5" />
-                                        )}
-                                        {isSandboxStartupBusy
-                                          ? sandboxStartProgressLabel
-                                          : sandboxStartLabel}
-                                      </Button>
-                                    )}
-                                    <Button
-                                      type="button"
-                                      size="sm"
-                                      onClick={() =>
-                                        void handleOpenEditorFromUi()
-                                      }
-                                      disabled={isCodeEditorActionDisabled}
-                                    >
-                                      {codeEditor.state.status === "starting" ||
-                                      isSandboxStartupBusy ? (
-                                        <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-                                      ) : (
-                                        <Code2 className="mr-2 h-3.5 w-3.5" />
-                                      )}
-                                      Open Editor
-                                    </Button>
-                                  </div>
-                                )}
+                                <div className="flex flex-wrap items-center justify-center gap-2">
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    className="cursor-pointer shadow-none"
+                                    onClick={() =>
+                                      void handleOpenEditorFromUi()
+                                    }
+                                    disabled={
+                                      isArchived || isCodeEditorActionDisabled
+                                    }
+                                  >
+                                    Open Editor
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    className="cursor-pointer shadow-none"
+                                    onClick={() => toast("Coming soon.")}
+                                  >
+                                    cmux
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    className="cursor-pointer shadow-none"
+                                    onClick={() => toast("Coming soon.")}
+                                  >
+                                    Zed Multiplayer
+                                  </Button>
+                                </div>
                                 {codeEditorDisabledReason && (
                                   <p className="text-xs text-muted-foreground">
                                     {codeEditorDisabledReason}
@@ -4158,7 +4185,7 @@ export function SessionChatContent({
                             placeholder={
                               showInlineQuestion
                                 ? inlineQuestion.placeholder
-                                : "Ask this session-level agent to make changes or ask a question..."
+                                : "Ask this task-level agent to make changes or ask a question..."
                             }
                             rows={1}
                             onFocus={handleTextareaFocus}
@@ -4394,7 +4421,7 @@ export function SessionChatContent({
                                           textAttachments.length === 0) ||
                                         isUpdatingModel
                                       }
-                                      className="h-8 w-8 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-30"
+                                      className="h-8 w-8 rounded-none bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-30"
                                     >
                                       <ArrowUp className="h-4 w-4" />
                                     </Button>

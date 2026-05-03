@@ -97,9 +97,9 @@ export function InboxSidebarRenameDialog({
     >
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Edit session</DialogTitle>
+          <DialogTitle>Edit task</DialogTitle>
           <DialogDescription>
-            Update the session name shown in your sidebar.
+            Update the task name shown in your sidebar.
           </DialogDescription>
         </DialogHeader>
         <form
@@ -113,7 +113,7 @@ export function InboxSidebarRenameDialog({
             ref={renameInputRef}
             value={draftTitle}
             onChange={(event) => setDraftTitle(event.target.value)}
-            placeholder="Session title"
+            placeholder="Task title"
             maxLength={120}
             disabled={renaming}
           />

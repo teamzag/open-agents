@@ -8,7 +8,7 @@ import {
   getShareByIdCached,
 } from "@/lib/db/sessions-cache";
 
-export const alt = "Shared Open Agents session";
+export const alt = "Shared Open Agents task";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -428,7 +428,7 @@ function fallbackImage() {
           'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
       }}
     >
-      Shared Open Agents session
+      Shared Open Agents task
     </div>,
     { ...size },
   );

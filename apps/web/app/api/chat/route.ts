@@ -85,7 +85,7 @@ export async function POST(req: Request) {
   const { sessionRecord, chat } = chatContext;
 
   if (sessionRecord.status === "archived") {
-    return Response.json({ error: "Session is archived" }, { status: 400 });
+    return Response.json({ error: "Task is archived" }, { status: 400 });
   }
 
   if (isManagedTemplateTrialUser(session, req.url)) {

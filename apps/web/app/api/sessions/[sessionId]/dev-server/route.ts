@@ -16,6 +16,14 @@ export type DevServerLaunchResponse = {
   packagePath: string;
   port: number;
   url: string;
+  urls?: DevServerLaunchUrl[];
+};
+
+export type DevServerLaunchUrl = {
+  label: string;
+  packagePath: string;
+  port: number;
+  url: string;
 };
 
 export type DevServerStopResponse = {
@@ -89,6 +97,38 @@ const PACKAGE_MANAGER_LOCKFILES: Array<{
 ];
 const PACKAGE_JSON_FIND_COMMAND =
   "find . \\( -path '*/node_modules/*' -o -path '*/.git/*' -o -path '*/.next/*' -o -path '*/dist/*' -o -path '*/build/*' -o -path '*/coverage/*' -o -path '*/.turbo/*' \\) -prune -o -name package.json -print | sort";
+const ZAG_REPO_OWNER = "teamzag";
+const ZAG_REPO_NAME = "zag";
+const ZAG_DEV_SERVER_TARGETS = [
+  {
+    label: "Landing",
+    packagePath: "apps/landing",
+    packageDir: "apps/landing",
+    port: 3000,
+  },
+  {
+    label: "Console",
+    packagePath: "apps/console",
+    packageDir: "apps/console",
+    port: 3001,
+  },
+  {
+    label: "Internal",
+    packagePath: "apps/internal",
+    packageDir: "apps/internal",
+    port: 3002,
+  },
+] as const;
+
+function isZagRepoSession(sessionRecord: {
+  repoOwner?: string | null;
+  repoName?: string | null;
+}): boolean {
+  return (
+    sessionRecord.repoOwner === ZAG_REPO_OWNER &&
+    sessionRecord.repoName === ZAG_REPO_NAME
+  );
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -691,6 +731,53 @@ function buildDevServerResponse(
   };
 }
 
+function buildZagDevServerResponse(
+  sandbox: ConnectedSandbox,
+): DevServerLaunchResponse {
+  if (!sandbox.domain) {
+    throw new Error("Sandbox does not expose preview URLs");
+  }
+
+  const tryGetDomain = (port: number) => {
+    if (!sandbox.domain) {
+      throw new Error("Sandbox does not expose preview URLs");
+    }
+
+    try {
+      return sandbox.domain(port);
+    } catch {
+      return null;
+    }
+  };
+  const rootUrl = tryGetDomain(3000);
+
+  if (!rootUrl) {
+    throw new Error("Sandbox does not expose a preview URL for port 3000");
+  }
+
+  return {
+    packagePath: "root",
+    port: 3000,
+    url: rootUrl,
+    urls: ZAG_DEV_SERVER_TARGETS.flatMap((target) => {
+      const url = tryGetDomain(target.port);
+
+      if (!url) {
+        return [];
+      }
+
+      return [
+        {
+          label: target.label,
+          packagePath: target.packagePath,
+          port: target.port,
+          url,
+        },
+      ];
+    }),
+  };
+}
+
 async function clearPersistedDevServerTarget(
   sandbox: ConnectedSandbox,
 ): Promise<void> {
@@ -897,6 +984,7 @@ async function connectDevServerSandboxForSession(
   return {
     ok: true as const,
     sandbox,
+    sessionRecord: sessionContext.sessionRecord,
   };
 }
 
@@ -917,7 +1005,7 @@ export async function POST(_req: Request, context: RouteContext) {
       return sandboxResult.response;
     }
 
-    const { sandbox } = sandboxResult;
+    const { sandbox, sessionRecord } = sandboxResult;
     if (!sandbox.execDetached) {
       return Response.json(
         { error: "Sandbox does not support background commands" },
@@ -925,18 +1013,80 @@ export async function POST(_req: Request, context: RouteContext) {
       );
     }
 
+    const zagSession = isZagRepoSession(sessionRecord);
     const persistedTarget = await readPersistedDevServerTarget(sandbox);
     if (persistedTarget) {
-      const existingPersistedPid = await getRunningDevServerPid({
-        sandbox,
-        packageDirAbs: persistedTarget.packageDirAbs,
-        port: persistedTarget.port,
+      if (zagSession && persistedTarget.packageDir !== ".") {
+        await stopDevServer({
+          sandbox,
+          packageDirAbs: persistedTarget.packageDirAbs,
+          port: persistedTarget.port,
+        }).catch(() => undefined);
+        await clearPersistedDevServerTarget(sandbox);
+      } else {
+        const existingPersistedPid = await getRunningDevServerPid({
+          sandbox,
+          packageDirAbs: persistedTarget.packageDirAbs,
+          port: persistedTarget.port,
+        });
+        if (existingPersistedPid) {
+          return Response.json(
+            zagSession
+              ? buildZagDevServerResponse(sandbox)
+              : buildDevServerResponse(sandbox, persistedTarget),
+          );
+        }
+
+        await clearPersistedDevServerTarget(sandbox);
+      }
+    }
+
+    if (zagSession) {
+      const target = buildResolvedDevServerTarget({
+        workingDirectory: sandbox.workingDirectory,
+        packageDir: ".",
+        port: 3000,
       });
-      if (existingPersistedPid) {
-        return Response.json(buildDevServerResponse(sandbox, persistedTarget));
+      const existingPid = await getRunningDevServerPid({
+        sandbox,
+        packageDirAbs: target.packageDirAbs,
+        port: target.port,
+      });
+      if (existingPid) {
+        await writePersistedDevServerTarget(sandbox, target);
+        return Response.json(buildZagDevServerResponse(sandbox));
       }
 
-      await clearPersistedDevServerTarget(sandbox);
+      const packageManager: PackageManager = "pnpm";
+      const installDependencies = await shouldInstallDependencies({
+        sandbox,
+        installRootAbs: target.packageDirAbs,
+        packageDirAbs: target.packageDirAbs,
+        packageManager,
+      });
+      const launchCommand = buildLaunchCommand({
+        packageManager,
+        framework: "custom",
+        port: target.port,
+        installRootAbs: target.packageDirAbs,
+        packageDirAbs: target.packageDirAbs,
+        installDependencies,
+        pidFilePath: getDevServerPidFilePath(target.packageDirAbs, target.port),
+      });
+
+      try {
+        await sandbox.execDetached(launchCommand, target.packageDirAbs);
+      } catch (error) {
+        await clearDevServerPidFile(
+          sandbox,
+          target.packageDirAbs,
+          target.port,
+        ).catch(() => undefined);
+        throw error;
+      }
+
+      await writePersistedDevServerTarget(sandbox, target);
+      return Response.json(buildZagDevServerResponse(sandbox));
     }
 
     const target = await resolveDevServerTarget(sandbox);

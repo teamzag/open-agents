@@ -39,11 +39,11 @@ function OpenAgentsLogo({ className }: { className?: string }) {
 
 function sanitizeRedirectPath(rawPath: string | null): string {
   if (!rawPath) {
-    return "/sessions";
+    return "/tasks";
   }
 
   if (!rawPath.startsWith("/") || rawPath.startsWith("//")) {
-    return "/sessions";
+    return "/tasks";
   }
 
   return rawPath;

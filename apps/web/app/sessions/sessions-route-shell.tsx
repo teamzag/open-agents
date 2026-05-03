@@ -81,10 +81,10 @@ export function SessionsRouteShell({
 
   const getSessionHref = useCallback((targetSession: SessionWithUnread) => {
     if (targetSession.latestChatId) {
-      return `/sessions/${targetSession.id}/chats/${targetSession.latestChatId}`;
+      return `/tasks/${targetSession.id}/chats/${targetSession.latestChatId}`;
     }
 
-    return `/sessions/${targetSession.id}`;
+    return `/tasks/${targetSession.id}`;
   }, []);
 
   const { preferences } = useUserPreferences();
@@ -160,7 +160,7 @@ export function SessionsRouteShell({
       if (targetSessionId === routeSessionId) {
         setOptimisticActiveSessionId(null);
         startNavigationTransition(() => {
-          router.push("/sessions", { scroll: false });
+          router.push("/tasks", { scroll: false });
         });
       }
     },
@@ -190,7 +190,7 @@ export function SessionsRouteShell({
           autoCommitPush: preferences?.autoCommitPush ?? false,
           autoCreatePr: preferences?.autoCreatePr ?? false,
         });
-        router.push(`/sessions/${created.id}/chats/${chat.id}`, {
+        router.push(`/tasks/${created.id}/chats/${chat.id}`, {
           scroll: false,
         });
       } catch (error) {
@@ -213,7 +213,7 @@ export function SessionsRouteShell({
           autoCommitPush: preferences?.autoCommitPush ?? false,
           autoCreatePr: preferences?.autoCreatePr ?? false,
         });
-        router.push(`/sessions/${created.id}/chats/${chat.id}`, {
+        router.push(`/tasks/${created.id}/chats/${chat.id}`, {
           scroll: false,
         });
       } catch (error) {

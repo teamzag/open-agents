@@ -203,7 +203,7 @@ export async function POST(req: Request, context: RouteContext) {
 
   if (!sessionRecord.repoOwner || !sessionRecord.repoName) {
     return Response.json(
-      { error: "Session is not linked to a GitHub repository" },
+      { error: "Task is not linked to a GitHub repository" },
       { status: 400 },
     );
   }

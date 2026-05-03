@@ -5,7 +5,7 @@ import { HomePage } from "./home-page";
 export default async function Home() {
   const session = await getServerSession();
   if (session?.user) {
-    redirect("/sessions");
+    redirect("/tasks");
   }
 
   return <HomePage hasSessionCookie={false} lastRepo={null} />;

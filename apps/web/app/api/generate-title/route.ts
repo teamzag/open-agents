@@ -4,7 +4,7 @@ import { z } from "zod";
 import { getServerSession } from "@/lib/session/get-server-session";
 
 /**
- * Generates a short, descriptive session title from a user message using AI.
+ * Generates a short, descriptive task title from a user message using AI.
  *
  * Can be called directly as a POST endpoint or used internally via
  * `generateSessionTitle()` for non-blocking server-side usage.
@@ -18,7 +18,7 @@ export async function generateSessionTitle(
   try {
     const result = await generateText({
       model: gateway("anthropic/claude-haiku-4.5"),
-      prompt: `You are a developer tool that names coding sessions. Generate a concise title (max 5 words) for a coding session based on the user's first message below. The title should help the user quickly identify what this session is about at a glance. Do NOT use quotes or punctuation around the title. Respond with ONLY the title, nothing else.
+      prompt: `You are a developer tool that names coding tasks. Generate a concise title (max 5 words) for a coding task based on the user's first message below. The title should help the user quickly identify what this task is about at a glance. Do NOT use quotes or punctuation around the title. Respond with ONLY the title, nothing else.
 
 User message:
 ${trimmed}`,

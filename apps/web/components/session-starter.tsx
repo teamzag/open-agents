@@ -206,8 +206,8 @@ export function SessionStarter({
 
   const buttonLabel =
     mode === "repo" && selectedOwner && selectedRepo
-      ? `Start with ${selectedOwner}/${selectedRepo}`
-      : "Start session";
+      ? `Start task with ${selectedOwner}/${selectedRepo}`
+      : "Start task";
 
   return (
     <div
@@ -242,7 +242,7 @@ export function SessionStarter({
             )}
           >
             <GitBranch className="h-3.5 w-3.5" />
-            Start Session
+            Start Task
           </button>
         </div>
 
@@ -282,7 +282,7 @@ export function SessionStarter({
 
         {mode === "empty" && (
           <p className="text-center text-sm text-muted-foreground dark:text-neutral-500">
-            Start a new chat -- no repository required.
+            Start a chat-only task -- no repository required.
           </p>
         )}
 
@@ -365,7 +365,7 @@ export function SessionStarter({
           )}
         >
           {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
-          {isLoading ? "Creating session…" : buttonLabel}
+          {isLoading ? "Creating task…" : buttonLabel}
         </button>
 
         <p className="text-center text-xs text-muted-foreground">

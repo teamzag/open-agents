@@ -86,7 +86,7 @@ export async function resolvePullRequestContextSection(params: {
 
   if (latestChatId && resolvedAppBaseUrl) {
     parts.push(
-      `[Chat](${resolvedAppBaseUrl}/sessions/${encodeURIComponent(sessionId)}/chats/${encodeURIComponent(latestChatId)})`,
+      `[Chat](${resolvedAppBaseUrl}/tasks/${encodeURIComponent(sessionId)}/chats/${encodeURIComponent(latestChatId)})`,
     );
   }
 

@@ -21,6 +21,7 @@ import {
   Trash2,
   WandSparkles,
 } from "lucide-react";
+import { FaGithub } from "react-icons/fa";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { DiffFile } from "@/app/api/sessions/[sessionId]/diff/route";
 import type { WebAgentUIMessage } from "@/app/types";
@@ -101,7 +102,7 @@ const mergeMethodDescriptions: Record<MergeMethod, string> = {
 };
 
 const createRepoDisabledReason =
-  "Creating repositories from Open Harness is temporarily disabled. Create the repository on GitHub first, then connect it to a session.";
+  "Creating repositories from Open Harness is temporarily disabled. Create the repository on GitHub first, then connect it to a task.";
 
 /* ------------------------------------------------------------------ */
 /* Types                                                               */
@@ -631,9 +632,9 @@ function InlineCommitPanel({
                 {commitMessage.trim() ? (
                   <GitCommit className="mr-1.5 h-3.5 w-3.5" />
                 ) : (
-                  <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+                  <FaGithub className="mr-1.5 h-3.5 w-3.5" />
                 )}
-                Commit & Push
+                Commit and Push
               </>
             )}
           </Button>
@@ -1289,7 +1290,7 @@ function InlineMergePanel({
 
   const handleMerge = async (force = false) => {
     if (!readiness?.pr) {
-      setError("No pull request found for this session.");
+      setError("No pull request found for this task.");
       return;
     }
 

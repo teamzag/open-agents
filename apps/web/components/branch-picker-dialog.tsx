@@ -81,13 +81,13 @@ export function BranchPickerDialog({
             </span>
           </DialogTitle>
           <DialogDescription className="sr-only">
-            Search and select the branch to use for this session.
+            Search and select the branch to use for this task.
           </DialogDescription>
         </DialogHeader>
         {isCreating ? (
           <div className="flex items-center justify-center gap-2 px-4 py-8 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
-            <span>Creating session on {selectedBranch}…</span>
+            <span>Creating task on {selectedBranch}…</span>
           </div>
         ) : (
           <Command className="border-t">

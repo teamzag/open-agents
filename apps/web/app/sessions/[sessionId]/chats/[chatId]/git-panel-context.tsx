@@ -4,6 +4,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useState,
   useMemo,
   useRef,
@@ -85,8 +86,8 @@ const GitPanelContext = createContext<GitPanelContextValue | undefined>(
 
 export function GitPanelProvider({ children }: { children: ReactNode }) {
   const isMobile = useIsMobile();
-  const [gitPanelOpen, setGitPanelOpen] = useState(false);
-  const [gitPanelTab, setGitPanelTab] = useState<GitPanelTab>("files");
+  const [gitPanelOpen, setGitPanelOpen] = useState(() => !isMobile);
+  const [gitPanelTab, setGitPanelTab] = useState<GitPanelTab>("diff");
   const [activeView, setActiveView] = useState<ActiveView>("chat");
   const [focusedDiffFile, setFocusedDiffFile] = useState<string | null>(null);
   const [focusedDiffRequestId, setFocusedDiffRequestId] = useState(0);
@@ -100,6 +101,12 @@ export function GitPanelProvider({ children }: { children: ReactNode }) {
   const [shareRequested, setShareRequested] = useState(false);
   const panelPortalRef = useRef<HTMLDivElement | null>(null);
   const headerActionsRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (isMobile) {
+      setGitPanelOpen(false);
+    }
+  }, [isMobile]);
 
   const openDiffToFile = useCallback(
     (filePath: string) => {

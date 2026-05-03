@@ -258,13 +258,13 @@ export function SharedChatContent({
                     You own this shared chat
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    Open the original session to keep working from your private
+                    Open the original task to keep working from your private
                     view.
                   </p>
                 </div>
                 <Button size="sm" asChild className="shrink-0">
                   <Link href={ownerSessionHref}>
-                    Open session
+                    Open task
                     <ArrowRight className="h-3.5 w-3.5" />
                   </Link>
                 </Button>

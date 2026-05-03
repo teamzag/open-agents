@@ -59,10 +59,7 @@ function registerRouteMocks() {
       if (!sessionRecord || sessionRecord.id !== sessionId) {
         return {
           ok: false as const,
-          response: Response.json(
-            { error: "Session not found" },
-            { status: 404 },
-          ),
+          response: Response.json({ error: "Task not found" }, { status: 404 }),
         };
       }
 

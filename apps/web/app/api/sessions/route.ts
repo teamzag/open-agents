@@ -364,7 +364,7 @@ export async function POST(req: Request) {
   } catch (error) {
     if (isVercelInvalidTokenError(error)) {
       console.warn(
-        `Vercel token is invalid for user ${session.user.id}; reconnect required to create a session with env sync.`,
+        `Vercel token is invalid for user ${session.user.id}; reconnect required to create a task with env sync.`,
       );
       return Response.json(
         { error: "Reconnect Vercel to select a Vercel project" },
@@ -373,9 +373,6 @@ export async function POST(req: Request) {
     }
 
     console.error("Failed to create session:", error);
-    return Response.json(
-      { error: "Failed to create session" },
-      { status: 500 },
-    );
+    return Response.json({ error: "Failed to create task" }, { status: 500 });
   }
 }

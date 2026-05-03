@@ -323,7 +323,7 @@ describe("/api/chat route", () => {
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({
-      error: "Session is archived",
+      error: "Task is archived",
     });
     expect(startCalls).toHaveLength(0);
     expect(createChatMessageIfNotExistsSpy).not.toHaveBeenCalled();
@@ -547,7 +547,7 @@ describe("/api/chat route", () => {
 
     expect(response.status).toBe(404);
     await expect(response.json()).resolves.toEqual({
-      error: "Session not found",
+      error: "Task not found",
     });
   });
 

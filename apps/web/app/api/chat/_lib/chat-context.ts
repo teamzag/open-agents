@@ -108,7 +108,7 @@ export async function requireOwnedSessionChat(
   if (!sessionRecord) {
     return {
       ok: false,
-      response: toErrorResponse("Session not found", 404, format),
+      response: toErrorResponse("Task not found", 404, format),
     };
   }
 

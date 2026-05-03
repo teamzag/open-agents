@@ -7,11 +7,11 @@ import { getServerSession } from "@/lib/session/get-server-session";
 
 function sanitizeRedirectTo(rawRedirectTo: string | null | undefined): string {
   if (!rawRedirectTo) {
-    return "/sessions";
+    return "/tasks";
   }
 
   if (!rawRedirectTo.startsWith("/") || rawRedirectTo.startsWith("//")) {
-    return "/sessions";
+    return "/tasks";
   }
 
   return rawRedirectTo;

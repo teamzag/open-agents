@@ -212,7 +212,7 @@ export function AppMockup() {
           <div className="p-3">
             <div className="mb-2 flex items-center justify-between">
               <span className="text-[10px] font-medium uppercase tracking-wider text-(--l-panel-fg-4)">
-                Sessions
+                Tasks
               </span>
               <div className="flex size-5 items-center justify-center rounded-md bg-(--l-panel-surface) text-[10px] text-(--l-panel-fg-3)">
                 +
@@ -307,7 +307,7 @@ export function AppMockup() {
               <div className="overflow-hidden rounded-2xl bg-(--l-panel-surface)">
                 <div className="px-3 py-2 sm:px-4 sm:py-2.5">
                   <span className="text-[11px] text-(--l-panel-fg-4) sm:text-[12px]">
-                    Request changes or ask a question...
+                    Ask this task-level agent to make changes...
                   </span>
                 </div>
                 <div className="flex items-center justify-between px-2.5 pb-1.5 sm:px-3 sm:pb-2">

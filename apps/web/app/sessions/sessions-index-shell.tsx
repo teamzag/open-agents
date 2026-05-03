@@ -29,15 +29,15 @@ export function SessionsIndexShell() {
             <EmptyMedia variant="icon">
               <MessageSquare />
             </EmptyMedia>
-            <EmptyTitle>Select a Session</EmptyTitle>
+            <EmptyTitle>Select a Task</EmptyTitle>
             <EmptyDescription>
-              Choose a session from the sidebar to continue, or start a new one.
+              Choose a task from the sidebar to continue, or start a new one.
             </EmptyDescription>
           </EmptyHeader>
           <EmptyContent>
             <Button onClick={openNewSessionDialog}>
               <Plus className="h-4 w-4" />
-              New Session
+              New Task
             </Button>
           </EmptyContent>
         </Empty>

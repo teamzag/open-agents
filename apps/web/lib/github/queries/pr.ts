@@ -56,7 +56,7 @@ async function requireAuth() {
 async function requireOwnedSession(userId: string, sessionId: string) {
   const sessionRecord = await getSessionById(sessionId);
   if (!sessionRecord) {
-    throw new Error("Session not found");
+    throw new Error("Task not found");
   }
   if (sessionRecord.userId !== userId) {
     throw new Error("Forbidden");
@@ -223,7 +223,7 @@ export async function getMergeReadiness(params: {
 
   if (!sessionRecord.cloneUrl || !repoIdentifier || !sessionRecord.repoOwner) {
     return buildUnavailableResponse(
-      "Session is not linked to a GitHub repository",
+      "Task is not linked to a GitHub repository",
       sessionRecord.prNumber,
       repoIdentifier,
     );
@@ -231,7 +231,7 @@ export async function getMergeReadiness(params: {
 
   if (!sessionRecord.prNumber) {
     return buildUnavailableResponse(
-      "No pull request found for this session",
+      "No pull request found for this task",
       null,
       repoIdentifier,
     );

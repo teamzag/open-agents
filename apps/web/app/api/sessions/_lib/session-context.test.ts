@@ -92,7 +92,7 @@ describe("session context guards", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.response.status).toBe(404);
-      expect(await getErrorMessage(result.response)).toBe("Session not found");
+      expect(await getErrorMessage(result.response)).toBe("Task not found");
     }
   });
 
@@ -165,7 +165,7 @@ describe("session context guards", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.response.status).toBe(404);
-      expect(await getErrorMessage(result.response)).toBe("Session not found");
+      expect(await getErrorMessage(result.response)).toBe("Task not found");
     }
   });
 

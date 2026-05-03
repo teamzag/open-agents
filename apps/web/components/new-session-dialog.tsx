@@ -49,7 +49,7 @@ export function NewSessionDialog({
     try {
       const { session: createdSession, chat } = await createSession(input);
       onOpenChange(false);
-      router.push(`/sessions/${createdSession.id}/chats/${chat.id}`);
+      router.push(`/tasks/${createdSession.id}/chats/${chat.id}`);
     } catch (error) {
       console.error("Failed to create session:", error);
     } finally {
@@ -61,9 +61,9 @@ export function NewSessionDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-[calc(100%-2rem)] max-w-none gap-0 overflow-hidden border-none bg-transparent p-0 shadow-none [&>button]:hidden">
         <DialogHeader className="sr-only">
-          <DialogTitle>New Session</DialogTitle>
+          <DialogTitle>New Task</DialogTitle>
           <DialogDescription>
-            Choose a repository or start an empty session.
+            Choose a repository or start an empty task.
           </DialogDescription>
         </DialogHeader>
         <div className="min-w-0 rounded-2xl sm:rounded-[28px] border border-border/60 bg-card shadow-[0_10px_30px_rgba(0,0,0,0.08)]">

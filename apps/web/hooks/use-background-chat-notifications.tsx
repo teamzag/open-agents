@@ -91,7 +91,7 @@ export function useBackgroundChatNotifications(
         hasCompleted = true;
 
         if (alertsEnabled) {
-          const title = session.title || "A session";
+          const title = session.title || "A task";
 
           toast("Agent finished", {
             description: title,

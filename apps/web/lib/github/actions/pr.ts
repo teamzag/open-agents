@@ -139,7 +139,7 @@ export async function generatePrContent(params: {
 
   const sessionRecord = await getSessionById(sessionId);
   if (!sessionRecord) {
-    throw new Error("Session not found");
+    throw new Error("Task not found");
   }
   if (sessionRecord.userId !== session.user.id) {
     throw new Error("Forbidden");
@@ -303,7 +303,7 @@ export async function openPullRequest(params: {
   // session ownership
   const sessionRecord = await getSessionById(sessionId);
   if (!sessionRecord) {
-    throw new Error("Session not found");
+    throw new Error("Task not found");
   }
   if (sessionRecord.userId !== session.user.id) {
     throw new Error("Forbidden");
@@ -484,7 +484,7 @@ export async function mergePr(params: {
 
   const sessionRecord = await getSessionById(sessionId);
   if (!sessionRecord) {
-    throw new Error("Session not found");
+    throw new Error("Task not found");
   }
   if (sessionRecord.userId !== session.user.id) {
     throw new Error("Forbidden");
@@ -495,10 +495,10 @@ export async function mergePr(params: {
     !sessionRecord.repoOwner ||
     !sessionRecord.repoName
   ) {
-    throw new Error("Session is not linked to a GitHub repository");
+    throw new Error("Task is not linked to a GitHub repository");
   }
   if (!sessionRecord.prNumber) {
-    throw new Error("No pull request found for this session");
+    throw new Error("No pull request found for this task");
   }
   const repoUrl = sessionRecord.cloneUrl;
   const repoOwner = sessionRecord.repoOwner;
@@ -669,7 +669,7 @@ export async function closePr(params: {
 
   const sessionRecord = await getSessionById(sessionId);
   if (!sessionRecord) {
-    throw new Error("Session not found");
+    throw new Error("Task not found");
   }
   if (sessionRecord.userId !== session.user.id) {
     throw new Error("Forbidden");
@@ -680,10 +680,10 @@ export async function closePr(params: {
     !sessionRecord.repoOwner ||
     !sessionRecord.repoName
   ) {
-    throw new Error("Session is not linked to a GitHub repository");
+    throw new Error("Task is not linked to a GitHub repository");
   }
   if (!sessionRecord.prNumber) {
-    throw new Error("No pull request found for this session");
+    throw new Error("No pull request found for this task");
   }
   const repoUrl = sessionRecord.cloneUrl;
   const repoOwner = sessionRecord.repoOwner;

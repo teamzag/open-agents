@@ -157,7 +157,7 @@ async function resolveChatModelRuntime(params: {
   ]);
 
   if (!sessionRecord) {
-    throw new Error("Session not found");
+    throw new Error("Task not found");
   }
   if (sessionRecord.userId !== params.userId) {
     throw new Error("Unauthorized");
@@ -288,8 +288,11 @@ function getSetupErrorMessage(error: unknown): string {
     return "Connect GitHub to access this repository, then try again.";
   }
 
-  if (error.message === "Session is archived") {
-    return "This session is archived. Unarchive it to continue.";
+  if (
+    error.message === "Session is archived" ||
+    error.message === "Task is archived"
+  ) {
+    return "This task is archived. Unarchive it to continue.";
   }
 
   return "Workspace setup failed. Try again in a moment.";

@@ -86,7 +86,7 @@ export async function requireOwnedSession(
   if (!sessionRecord) {
     return {
       ok: false,
-      response: toErrorResponse("Session not found", 404),
+      response: toErrorResponse("Task not found", 404),
     };
   }
 
@@ -147,7 +147,7 @@ export async function requireOwnedSessionChat(
   if (!sessionRecord) {
     return {
       ok: false,
-      response: toErrorResponse("Session not found", 404),
+      response: toErrorResponse("Task not found", 404),
     };
   }
 

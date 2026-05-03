@@ -199,7 +199,7 @@ export function MergePrDialog({
 
   const handleMerge = async (force = false) => {
     if (!readiness?.pr) {
-      setError("No pull request found for this session.");
+      setError("No pull request found for this task.");
       return;
     }
 
@@ -291,7 +291,7 @@ export function MergePrDialog({
             Merge & Archive
           </DialogTitle>
           <DialogDescription>
-            Merge PR #{session.prNumber} and archive this session.
+            Merge PR #{session.prNumber} and archive this task.
           </DialogDescription>
         </DialogHeader>
 

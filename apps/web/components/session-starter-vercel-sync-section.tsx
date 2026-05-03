@@ -125,7 +125,7 @@ export function SessionStarterVercelSyncSection({
         icon: <XCircleIcon className="h-3.5 w-3.5 text-muted-foreground/50" />,
         label: (
           <span className="text-xs text-muted-foreground">
-            Env sync disabled for this session
+            Env sync disabled for this task
           </span>
         ),
       };
@@ -192,8 +192,8 @@ export function SessionStarterVercelSyncSection({
           <div className="flex items-start gap-2.5">
             <XCircleIcon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
             <p className="text-xs leading-relaxed text-muted-foreground">
-              No linked Vercel projects found for this repo. The session will
-              start without env sync.
+              No linked Vercel projects found for this repo. The task will start
+              without env sync.
             </p>
           </div>
         ) : repoProjects ? (
@@ -230,7 +230,7 @@ export function SessionStarterVercelSyncSection({
             </Select>
             {requiresVercelChoice && (
               <p className="text-xs text-amber-600 dark:text-amber-400/80">
-                Select a project to sync, or opt out for this session.
+                Select a project to sync, or opt out for this task.
               </p>
             )}
           </div>
