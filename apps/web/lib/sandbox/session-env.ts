@@ -1,4 +1,7 @@
-function isZagRepo(repoOwner?: string | null, repoName?: string | null): boolean {
+function isZagRepo(
+  repoOwner?: string | null,
+  repoName?: string | null,
+): boolean {
   return repoOwner === "teamzag" && repoName === "zag";
 }
 
@@ -9,7 +12,7 @@ export function getSandboxCommandEnvForRepo(
   const env: Record<string, string> = {};
 
   if (isZagRepo(repoOwner, repoName)) {
-    const dotenvPrivateKey = process.env.DOTENV_PRIVATE_KEY;
+    const dotenvPrivateKey = process.env.DOTENV_PRIVATE_KEY?.trim();
     if (dotenvPrivateKey) {
       env.DOTENV_PRIVATE_KEY = dotenvPrivateKey;
     }

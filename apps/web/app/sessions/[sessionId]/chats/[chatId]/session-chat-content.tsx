@@ -2706,7 +2706,7 @@ export function SessionChatContent({
     isReconnectingSandbox ||
     isHibernatingUi;
   const sandboxStartLabel =
-    hasSnapshot || hasRuntimeSandboxState ? "Resume Session" : "Start Sandbox";
+    hasSnapshot || hasRuntimeSandboxState ? "Resume Sandbox" : "Start Sandbox";
   const sandboxStartProgressLabel =
     hasSnapshot || hasRuntimeSandboxState ? "Resuming..." : "Starting...";
   const canStartSandboxFromUi =
@@ -3099,7 +3099,10 @@ export function SessionChatContent({
                       </Button>
                     </span>
                   </TooltipTrigger>
-                  <TooltipContent side="bottom" className="max-w-72 text-pretty">
+                  <TooltipContent
+                    side="bottom"
+                    className="max-w-72 text-pretty"
+                  >
                     {codeEditorDisabledReason ??
                       (isSandboxActive
                         ? codeEditor.menuLabel
@@ -3336,15 +3339,14 @@ export function SessionChatContent({
                               <div className="flex max-w-md flex-col items-center gap-4 text-center">
                                 <div className="space-y-1.5">
                                   <p className="text-sm font-medium text-foreground">
-                                    This is the chat agent. It runs outside the
-                                    sandbox and works on the repo through tools
-                                    like file reads, edits, search, and shell
-                                    commands.
+                                    This is the session-level agent. It works on
+                                    the sandbox through remote execution: file
+                                    reads, edits, search, and shell commands.
                                   </p>
                                   <p className="text-sm text-muted-foreground">
-                                    To run an agent inside the sandbox, open the
-                                    editor and launch Claude Code or Codex from
-                                    the terminal.
+                                    To run an agent from inside the sandbox,
+                                    open the editor and launch Claude Code or
+                                    Codex in the terminal.
                                   </p>
                                 </div>
                                 {!isArchived && canUseCodeEditor && (
@@ -3377,8 +3379,8 @@ export function SessionChatContent({
                                       }
                                       disabled={isCodeEditorActionDisabled}
                                     >
-                                      {codeEditor.state.status ===
-                                        "starting" || isSandboxStartupBusy ? (
+                                      {codeEditor.state.status === "starting" ||
+                                      isSandboxStartupBusy ? (
                                         <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
                                       ) : (
                                         <Code2 className="mr-2 h-3.5 w-3.5" />
@@ -4156,7 +4158,7 @@ export function SessionChatContent({
                             placeholder={
                               showInlineQuestion
                                 ? inlineQuestion.placeholder
-                                : "Request changes or ask a question..."
+                                : "Ask this session-level agent to make changes or ask a question..."
                             }
                             rows={1}
                             onFocus={handleTextareaFocus}

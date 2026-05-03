@@ -107,9 +107,9 @@ async function main() {
         'ARCH="$(uname -m)"',
         'case "$ARCH" in x86_64) RG_ARCH=x86_64 ;; aarch64) RG_ARCH=aarch64 ;; *) echo "unsupported arch: $ARCH" >&2; exit 1 ;; esac',
         "rm -rf /tmp/ripgrep-14.1.1-* /tmp/ripgrep.tar.gz",
-        'curl -fsSL "https://github.com/BurntSushi/ripgrep/releases/download/14.1.1/ripgrep-14.1.1-${RG_ARCH}-unknown-linux-musl.tar.gz" -o /tmp/ripgrep.tar.gz',
+        `curl -fsSL "https://github.com/BurntSushi/ripgrep/releases/download/14.1.1/ripgrep-14.1.1-\${RG_ARCH}-unknown-linux-musl.tar.gz" -o /tmp/ripgrep.tar.gz`,
         "tar -xzf /tmp/ripgrep.tar.gz -C /tmp",
-        'sudo install -m 0755 /tmp/ripgrep-14.1.1-${RG_ARCH}-unknown-linux-musl/rg /usr/local/bin/rg',
+        `sudo install -m 0755 /tmp/ripgrep-14.1.1-\${RG_ARCH}-unknown-linux-musl/rg /usr/local/bin/rg`,
         "sudo dnf config-manager --add-repo https://rpm.releases.hashicorp.com/AmazonLinux/hashicorp.repo || true",
         "sudo dnf install -y terraform packer",
       ]),
@@ -122,7 +122,7 @@ async function main() {
         'ARCH="$(uname -m)"',
         'case "$ARCH" in x86_64) AWS_ARCH=x86_64 ;; aarch64) AWS_ARCH=aarch64 ;; *) echo "unsupported arch: $ARCH" >&2; exit 1 ;; esac',
         "rm -rf /tmp/aws /tmp/awscliv2.zip",
-        'curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-${AWS_ARCH}.zip" -o /tmp/awscliv2.zip',
+        `curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-\${AWS_ARCH}.zip" -o /tmp/awscliv2.zip`,
         "unzip -q /tmp/awscliv2.zip -d /tmp",
         "sudo /tmp/aws/install --update",
       ]),
@@ -132,7 +132,7 @@ async function main() {
       sandbox,
       "Install Node CLIs",
       command([
-        'sudo env "PATH=$PATH" npm install -g corepack agent-browser @tigrisdata/cli vercel neonctl',
+        'sudo env "PATH=$PATH" npm install -g corepack agent-browser @tigrisdata/cli vercel neonctl @anthropic-ai/claude-code @openai/codex',
         "agent-browser install --with-deps",
       ]),
     );
@@ -143,7 +143,23 @@ async function main() {
       command([
         "curl -fsSL https://code-server.dev/install.sh | sh",
         'if [ -x "$HOME/.local/bin/code-server" ]; then sudo ln -sf "$HOME/.local/bin/code-server" /usr/local/bin/code-server; fi',
+        "code-server --install-extension GitHub.github-vscode-theme --force",
         "code-server --version",
+      ]),
+    );
+
+    await run(
+      sandbox,
+      "Configure code-server defaults",
+      command([
+        'mkdir -p "$HOME/.local/share/code-server/User"',
+        "cat > \"$HOME/.local/share/code-server/User/settings.json\" <<'JSON'",
+        "{",
+        '  "task.allowAutomaticTasks": "on",',
+        '  "workbench.colorTheme": "GitHub Light Default",',
+        '  "workbench.panel.defaultLocation": "right"',
+        "}",
+        "JSON",
       ]),
     );
 
@@ -154,12 +170,33 @@ async function main() {
         "cat > /tmp/tigris-zag <<'SH'",
         "#!/usr/bin/env bash",
         "set -euo pipefail",
-        'if [ -n "${TIGRIS_ACCESS_KEY_ID:-}" ]; then export AWS_ACCESS_KEY_ID="$TIGRIS_ACCESS_KEY_ID"; fi',
-        'if [ -n "${TIGRIS_SECRET_ACCESS_KEY:-}" ]; then export AWS_SECRET_ACCESS_KEY="$TIGRIS_SECRET_ACCESS_KEY"; fi',
-        'export AWS_REGION="${TIGRIS_REGION:-auto}"',
+        `if [ -n "\${TIGRIS_ACCESS_KEY_ID:-}" ]; then export AWS_ACCESS_KEY_ID="$TIGRIS_ACCESS_KEY_ID"; fi`,
+        `if [ -n "\${TIGRIS_SECRET_ACCESS_KEY:-}" ]; then export AWS_SECRET_ACCESS_KEY="$TIGRIS_SECRET_ACCESS_KEY"; fi`,
+        `export AWS_REGION="\${TIGRIS_REGION:-auto}"`,
         'exec tigris "$@"',
         "SH",
         "sudo install -m 0755 /tmp/tigris-zag /usr/local/bin/tigris-zag",
+      ]),
+    );
+
+    await run(
+      sandbox,
+      "Install agent CLI aliases",
+      command([
+        "cat > /tmp/zag-agent-aliases.sh <<'SH'",
+        "# Zag agent convenience commands.",
+        'cc() { pnpm exec dotenvx run -f .env -- claude "$@"; }',
+        'skip() { pnpm exec dotenvx run -f .env -- claude --dangerously-skip-permissions "$@"; }',
+        'ccd() { skip "$@"; }',
+        "bypass() {",
+        `  pnpm exec dotenvx run -f .env -- bash -lc 'set -euo pipefail; if [ -n "\${OPENAI_API_KEY:-}" ]; then printf "%s\\n" "$OPENAI_API_KEY" | codex login --with-api-key >/dev/null; fi; exec codex --dangerously-bypass-approvals-and-sandbox "$@"' _ "$@"`,
+        "}",
+        "SH",
+        "sudo install -m 0644 /tmp/zag-agent-aliases.sh /etc/profile.d/zag-agent-aliases.sh",
+        'touch "$HOME/.bashrc"',
+        "grep -qxF 'source /etc/profile.d/zag-agent-aliases.sh' \"$HOME/.bashrc\" || printf '\\nsource /etc/profile.d/zag-agent-aliases.sh\\n' >> \"$HOME/.bashrc\"",
+        'touch "$HOME/.zshrc"',
+        "grep -qxF 'source /etc/profile.d/zag-agent-aliases.sh' \"$HOME/.zshrc\" || printf '\\nsource /etc/profile.d/zag-agent-aliases.sh\\n' >> \"$HOME/.zshrc\"",
       ]),
     );
 
@@ -199,6 +236,9 @@ async function main() {
         "pnpm --version",
         "code-server --version | head -n 1",
         "agent-browser --version",
+        "claude --version",
+        "codex --version",
+        "bash -ic 'type skip && type ccd && type cc && type bypass'",
         "terraform version | head -n 1",
         "packer version | head -n 1",
         "aws --version",
@@ -211,7 +251,9 @@ async function main() {
     );
 
     if (!sandbox.snapshot) {
-      throw new Error("Configured sandbox provider does not support snapshots.");
+      throw new Error(
+        "Configured sandbox provider does not support snapshots.",
+      );
     }
 
     console.log("\n==> Creating non-expiring snapshot");
