@@ -26,6 +26,8 @@ export interface ConnectOptions {
   hooks?: SandboxHooks;
   /** Timeout in milliseconds for sandboxes (default: 300,000 = 5 minutes) */
   timeout?: number;
+  /** Number of vCPUs for newly created sandboxes */
+  vcpus?: number;
   /** Ports to expose from the sandbox for dev server preview URLs */
   ports?: number[];
   /** Snapshot ID used as the base image for new sandboxes */

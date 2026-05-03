@@ -10,6 +10,18 @@ const VERCEL_SANDBOX_TIMEOUT_BUFFER_MS = 30 * 1000;
 export const DEFAULT_SANDBOX_TIMEOUT_MS =
   5 * 60 * 60 * 1000 - VERCEL_SANDBOX_TIMEOUT_BUFFER_MS;
 
+function getSandboxVcpus(): number {
+  const parsed = Number.parseInt(process.env.VERCEL_SANDBOX_VCPUS ?? "", 10);
+  if (Number.isInteger(parsed) && parsed >= 1 && parsed <= 8) {
+    return parsed;
+  }
+
+  return 8;
+}
+
+/** Default vCPU allocation for newly created cloud sandboxes. */
+export const DEFAULT_SANDBOX_VCPUS = getSandboxVcpus();
+
 /** Manual extension duration for explicit fallback flows (20 minutes) */
 export const EXTEND_TIMEOUT_DURATION_MS = 20 * 60 * 1000;
 

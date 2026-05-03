@@ -9,6 +9,7 @@ interface ConnectOptions {
   gitUser?: { name: string; email: string };
   hooks?: SandboxHooks;
   timeout?: number;
+  vcpus?: number;
   ports?: number[];
   baseSnapshotId?: string;
   resume?: boolean;
@@ -77,6 +78,7 @@ function buildCreateConfig(
     gitUser: options?.gitUser,
     hooks: options?.hooks,
     ...(options?.timeout !== undefined && { timeout: options.timeout }),
+    ...(options?.vcpus !== undefined && { vcpus: options.vcpus }),
     ...(options?.ports && { ports: options.ports }),
     ...(options?.baseSnapshotId && {
       baseSnapshotId: options.baseSnapshotId,
