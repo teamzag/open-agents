@@ -22,6 +22,20 @@ function getSandboxVcpus(): number {
 /** Default vCPU allocation for newly created cloud sandboxes. */
 export const DEFAULT_SANDBOX_VCPUS = getSandboxVcpus();
 
+type SandboxRuntime = "node22" | "node24" | "python3.13";
+
+function getSandboxRuntime(): SandboxRuntime {
+  const value = process.env.VERCEL_SANDBOX_RUNTIME?.trim();
+  if (value === "node22" || value === "node24" || value === "python3.13") {
+    return value;
+  }
+
+  return "node24";
+}
+
+/** Default runtime for newly created cloud sandboxes. */
+export const DEFAULT_SANDBOX_RUNTIME = getSandboxRuntime();
+
 /** Manual extension duration for explicit fallback flows (20 minutes) */
 export const EXTEND_TIMEOUT_DURATION_MS = 20 * 60 * 1000;
 
@@ -63,3 +77,37 @@ function getSandboxBaseSnapshotId(): string | undefined {
  * must opt into their own snapshot instead of using the upstream project's ID.
  */
 export const DEFAULT_SANDBOX_BASE_SNAPSHOT_ID = getSandboxBaseSnapshotId();
+
+function getWorkspaceSnapshotId(): string | undefined {
+  const value = process.env.VERCEL_SANDBOX_WORKSPACE_SNAPSHOT_ID?.trim();
+  return value ? value : undefined;
+}
+
+function getWorkspaceSnapshotRepo(): string | undefined {
+  const value = process.env.VERCEL_SANDBOX_WORKSPACE_REPO?.trim();
+  return value ? value : undefined;
+}
+
+/** Optional pre-cloned workspace snapshot used for a specific repository. */
+export const DEFAULT_SANDBOX_WORKSPACE_SNAPSHOT_ID = getWorkspaceSnapshotId();
+export const DEFAULT_SANDBOX_WORKSPACE_REPO = getWorkspaceSnapshotRepo();
+
+export const DEFAULT_SANDBOX_WORKSPACE_SETUP_COMMAND =
+  "git submodule sync --recursive && git submodule update --init --recursive && corepack enable && corepack prepare pnpm@9.15.4 --activate && pnpm install --frozen-lockfile --prefer-offline";
+
+export function getWorkspaceSnapshotIdForRepo(
+  repoOwner?: string | null,
+  repoName?: string | null,
+): string | undefined {
+  if (!DEFAULT_SANDBOX_WORKSPACE_SNAPSHOT_ID) {
+    return undefined;
+  }
+
+  if (!repoOwner || !repoName || !DEFAULT_SANDBOX_WORKSPACE_REPO) {
+    return undefined;
+  }
+
+  return DEFAULT_SANDBOX_WORKSPACE_REPO === `${repoOwner}/${repoName}`
+    ? DEFAULT_SANDBOX_WORKSPACE_SNAPSHOT_ID
+    : undefined;
+}

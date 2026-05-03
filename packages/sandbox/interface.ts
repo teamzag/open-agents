@@ -165,7 +165,7 @@ export interface Sandbox {
   /**
    * Create a native Vercel snapshot of the sandbox filesystem.
    */
-  snapshot?(): Promise<SnapshotResult>;
+  snapshot?(options?: { expiration?: number }): Promise<SnapshotResult>;
 
   /**
    * Get the current state of the sandbox for persistence/restoration.

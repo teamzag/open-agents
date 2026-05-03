@@ -20,9 +20,13 @@ import {
 import {
   DEFAULT_SANDBOX_BASE_SNAPSHOT_ID,
   DEFAULT_SANDBOX_PORTS,
+  DEFAULT_SANDBOX_RUNTIME,
   DEFAULT_SANDBOX_TIMEOUT_MS,
   DEFAULT_SANDBOX_VCPUS,
+  DEFAULT_SANDBOX_WORKSPACE_SETUP_COMMAND,
+  getWorkspaceSnapshotIdForRepo,
 } from "@/lib/sandbox/config";
+import { getSandboxCommandEnvForRepo } from "@/lib/sandbox/session-env";
 import {
   buildActiveLifecycleUpdate,
   getNextLifecycleVersion,
@@ -194,6 +198,18 @@ export async function POST(req: Request) {
         session.user.email ??
         `${session.user.username}@users.noreply.github.com`,
     };
+    const repoEnv = sessionRecord
+      ? getSandboxCommandEnvForRepo(
+          sessionRecord.repoOwner,
+          sessionRecord.repoName,
+        )
+      : undefined;
+    const workspaceSnapshotId = sessionRecord
+      ? getWorkspaceSnapshotIdForRepo(
+          sessionRecord.repoOwner,
+          sessionRecord.repoName,
+        )
+      : undefined;
 
     sandbox = await connectSandbox({
       state: {
@@ -202,12 +218,18 @@ export async function POST(req: Request) {
         source,
       },
       options: {
+        env: repoEnv,
         githubToken: setupToken?.token,
         gitUser,
         timeout: DEFAULT_SANDBOX_TIMEOUT_MS,
         vcpus: DEFAULT_SANDBOX_VCPUS,
         ports: DEFAULT_SANDBOX_PORTS,
+        runtime: DEFAULT_SANDBOX_RUNTIME,
         baseSnapshotId: DEFAULT_SANDBOX_BASE_SNAPSHOT_ID,
+        workspaceSnapshotId,
+        workspaceSetupCommand: workspaceSnapshotId
+          ? DEFAULT_SANDBOX_WORKSPACE_SETUP_COMMAND
+          : undefined,
         persistent: !!sandboxName,
         resume: !!sandboxName,
         createIfMissing: !!sandboxName,

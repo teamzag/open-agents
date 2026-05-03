@@ -30,8 +30,14 @@ export interface ConnectOptions {
   vcpus?: number;
   /** Ports to expose from the sandbox for dev server preview URLs */
   ports?: number[];
+  /** Runtime environment for newly created sandboxes */
+  runtime?: "node22" | "node24" | "python3.13";
   /** Snapshot ID used as the base image for new sandboxes */
   baseSnapshotId?: string;
+  /** Snapshot ID whose working directory already contains the target repo */
+  workspaceSnapshotId?: string;
+  /** Command to run after a source-backed workspace snapshot is refreshed */
+  workspaceSetupCommand?: string;
   /** Whether to resume a stopped persistent sandbox session */
   resume?: boolean;
   /** Whether to create the named sandbox when it does not already exist */

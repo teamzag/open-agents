@@ -5,6 +5,7 @@ import {
   requireOwnedSessionWithSandboxGuard,
 } from "@/app/api/sessions/_lib/session-context";
 import { DEFAULT_SANDBOX_PORTS } from "@/lib/sandbox/config";
+import { getSandboxCommandEnvForRepo } from "@/lib/sandbox/session-env";
 import { isSandboxActive } from "@/lib/sandbox/utils";
 
 type RouteContext = {
@@ -886,6 +887,10 @@ async function connectDevServerSandboxForSession(
   }
 
   const sandbox = await connectSandbox(sandboxState, {
+    env: getSandboxCommandEnvForRepo(
+      sessionContext.sessionRecord.repoOwner,
+      sessionContext.sessionRecord.repoName,
+    ),
     ports: DEFAULT_SANDBOX_PORTS,
   });
 

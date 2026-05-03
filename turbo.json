@@ -7,6 +7,7 @@
         "BETTER_AUTH_SECRET",
         "BETTER_AUTH_URL",
         "BLOB_READ_WRITE_TOKEN",
+        "DOTENV_PRIVATE_KEY",
         "ENCRYPTION_KEY",
         "GITHUB_CLIENT_SECRET",
         "JWE_SECRET",
@@ -21,7 +22,10 @@
         "REDIS_URL",
         "VERCEL_APP_CLIENT_SECRET",
         "VERCEL_SANDBOX_BASE_SNAPSHOT_ID",
-        "VERCEL_SANDBOX_VCPUS"
+        "VERCEL_SANDBOX_RUNTIME",
+        "VERCEL_SANDBOX_VCPUS",
+        "VERCEL_SANDBOX_WORKSPACE_REPO",
+        "VERCEL_SANDBOX_WORKSPACE_SNAPSHOT_ID"
       ],
       "outputs": ["dist/**"]
     },

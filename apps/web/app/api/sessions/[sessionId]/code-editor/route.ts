@@ -8,6 +8,7 @@ import {
   MANAGED_TEMPLATE_TRIAL_CODE_EDITOR_ERROR,
 } from "@/lib/managed-template-trial";
 import { CODE_SERVER_PORT, DEFAULT_SANDBOX_PORTS } from "@/lib/sandbox/config";
+import { getSandboxCommandEnvForRepo } from "@/lib/sandbox/session-env";
 import { getServerSession } from "@/lib/session/get-server-session";
 import { isSandboxActive } from "@/lib/sandbox/utils";
 
@@ -62,6 +63,10 @@ async function connectCodeEditorSandbox(sessionId: string, userId: string) {
   }
 
   const sandbox = await connectSandbox(sandboxState, {
+    env: getSandboxCommandEnvForRepo(
+      sessionContext.sessionRecord.repoOwner,
+      sessionContext.sessionRecord.repoName,
+    ),
     ports: DEFAULT_SANDBOX_PORTS,
   });
 

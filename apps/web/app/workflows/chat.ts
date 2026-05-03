@@ -704,6 +704,7 @@ export async function runAgentWorkflow(options: Options) {
         workingDirectory: runtime.workingDirectory,
         currentBranch: runtime.currentBranch,
         environmentDetails: runtime.environmentDetails,
+        env: runtime.env,
       },
       ...(runtime.skills.length > 0 ? { skills: runtime.skills } : {}),
     };

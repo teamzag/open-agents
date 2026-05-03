@@ -70,6 +70,18 @@ export interface VercelSandboxConfig {
    */
   baseSnapshotId?: string;
   /**
+   * Optional snapshot ID whose working directory already contains the target
+   * repository. When used with `source`, the repo is refreshed in place instead
+   * of cloned into an empty directory.
+   */
+  workspaceSnapshotId?: string;
+  /**
+   * Optional command run after a source-backed workspace snapshot is refreshed.
+   * Useful for cheap per-session setup such as submodule sync or lockfile
+   * drift checks.
+   */
+  workspaceSetupCommand?: string;
+  /**
    * Whether the sandbox should automatically persist filesystem state between sessions.
    * @default true
    */

@@ -1,6 +1,7 @@
 import { discoverSkills } from "@open-agents/agent";
 import { connectSandbox } from "@open-agents/sandbox";
 import { DEFAULT_SANDBOX_PORTS } from "@/lib/sandbox/config";
+import { getSandboxCommandEnvForRepo } from "@/lib/sandbox/session-env";
 import { getSandboxSkillDirectories } from "@/lib/skills/directories";
 import { getCachedSkills, setCachedSkills } from "@/lib/skills-cache";
 import type { SessionRecord } from "./chat-context";
@@ -45,6 +46,10 @@ export async function createChatRuntime(params: {
   }
 
   const sandbox = await connectSandbox(sandboxState, {
+    env: getSandboxCommandEnvForRepo(
+      sessionRecord.repoOwner,
+      sessionRecord.repoName,
+    ),
     ports: DEFAULT_SANDBOX_PORTS,
   });
 

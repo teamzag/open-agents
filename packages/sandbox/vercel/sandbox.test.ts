@@ -465,6 +465,58 @@ describe("VercelSandbox.create", () => {
     });
     expect(runCommandCalls.filter((c) => c.cmd === "git")).toEqual([]);
   });
+
+  test("creates from workspace snapshot and refreshes repo in place", async () => {
+    runCommandMock = async (params) => ({
+      exitCode: 0,
+      cmdId: "cmd-1",
+      stdout: async () =>
+        params?.cmd === "git" && params.args?.[0] === "symbolic-ref"
+          ? "origin/main\n"
+          : "",
+    });
+
+    const sandbox = await sandboxModule.VercelSandbox.create({
+      workspaceSnapshotId: "snap-workspace-1",
+      source: {
+        url: "https://github.com/teamzag/zag",
+        newBranch: "agent/test-branch",
+      },
+      env: { DOTENV_PRIVATE_KEY: "dotenv-private-key" },
+      workspaceSetupCommand: "pnpm install --frozen-lockfile --prefer-offline",
+    });
+
+    expect(createCalls.length).toBe(1);
+    expect(createCalls[0]?.source).toEqual({
+      type: "snapshot",
+      snapshotId: "snap-workspace-1",
+    });
+    expect(sandbox.currentBranch).toBe("agent/test-branch");
+    expect(runCommandCalls).toContainEqual({
+      cmd: "git",
+      args: ["remote", "set-url", "origin", "https://github.com/teamzag/zag"],
+      cwd: "/vercel/sandbox",
+    });
+    expect(runCommandCalls).toContainEqual({
+      cmd: "git",
+      args: ["fetch", "--prune", "--depth=1", "origin"],
+      cwd: "/vercel/sandbox",
+    });
+    expect(runCommandCalls).toContainEqual({
+      cmd: "git",
+      args: ["checkout", "-B", "agent/test-branch", "origin/main"],
+      cwd: "/vercel/sandbox",
+    });
+    expect(runCommandCalls).toContainEqual({
+      cmd: "bash",
+      args: ["-lc", "pnpm install --frozen-lockfile --prefer-offline"],
+      cwd: "/vercel/sandbox",
+      env: { DOTENV_PRIVATE_KEY: "dotenv-private-key" },
+    });
+    expect(
+      runCommandCalls.some((call) => call.args?.includes("clone")),
+    ).toBe(false);
+  });
 });
 
 describe("VercelSandbox.execDetached", () => {

@@ -36,6 +36,7 @@ export interface AgentSandboxContext {
   workingDirectory: string;
   currentBranch?: string;
   environmentDetails?: string;
+  env?: Record<string, string>;
 }
 
 const callOptionsSchema = z.object({

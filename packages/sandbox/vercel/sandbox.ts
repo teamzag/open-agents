@@ -123,6 +123,226 @@ async function clearGitHubCredentialBrokeringBestEffort(
   }
 }
 
+function formatCommandError(label: string, output: string): string | null {
+  const trimmed = output.trim();
+  return trimmed ? `${label}:\n${trimmed}` : null;
+}
+
+async function runSetupCommandOrThrow(
+  sdk: VercelSandboxSDK,
+  command: {
+    cmd: string;
+    args?: string[];
+    cwd?: string;
+    env?: Record<string, string>;
+  },
+  failureMessage: string,
+): Promise<string> {
+  const result = await sdk.runCommand(command);
+
+  if (result.exitCode === 0) {
+    return await result.stdout();
+  }
+
+  const stdout = await result.stdout();
+  const stderr = await result.stderr();
+  const sections = [
+    `${failureMessage} (exit code ${result.exitCode})`,
+    formatCommandError("stdout", stdout),
+    formatCommandError("stderr", stderr),
+  ].filter((section): section is string => section !== null);
+
+  throw new Error(sections.join("\n\n"));
+}
+
+async function runSetupCommandBestEffort(
+  sdk: VercelSandboxSDK,
+  command: {
+    cmd: string;
+    args?: string[];
+    cwd?: string;
+    env?: Record<string, string>;
+  },
+): Promise<boolean> {
+  try {
+    const result = await sdk.runCommand(command);
+    return result.exitCode === 0;
+  } catch {
+    return false;
+  }
+}
+
+async function ensureOriginRemote(
+  sdk: VercelSandboxSDK,
+  workingDirectory: string,
+  url: string,
+): Promise<void> {
+  const didSet = await runSetupCommandBestEffort(sdk, {
+    cmd: "git",
+    args: ["remote", "set-url", "origin", url],
+    cwd: workingDirectory,
+  });
+
+  if (didSet) {
+    return;
+  }
+
+  await runSetupCommandOrThrow(
+    sdk,
+    {
+      cmd: "git",
+      args: ["remote", "add", "origin", url],
+      cwd: workingDirectory,
+    },
+    "Failed to configure repository origin",
+  );
+}
+
+async function getDefaultRemoteRef(
+  sdk: VercelSandboxSDK,
+  workingDirectory: string,
+): Promise<string> {
+  await runSetupCommandBestEffort(sdk, {
+    cmd: "git",
+    args: ["remote", "set-head", "origin", "--auto"],
+    cwd: workingDirectory,
+  });
+
+  const remoteHead = (
+    await runSetupCommandBestEffort(sdk, {
+      cmd: "git",
+      args: ["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"],
+      cwd: workingDirectory,
+    })
+  )
+    ? (
+        await runSetupCommandOrThrow(
+          sdk,
+          {
+            cmd: "git",
+            args: [
+              "symbolic-ref",
+              "--quiet",
+              "--short",
+              "refs/remotes/origin/HEAD",
+            ],
+            cwd: workingDirectory,
+          },
+          "Failed to resolve origin HEAD",
+        )
+      ).trim()
+    : "";
+
+  return remoteHead || "origin/main";
+}
+
+async function refreshWorkspaceSnapshotSource(params: {
+  sdk: VercelSandboxSDK;
+  source: NonNullable<VercelSandboxConfig["source"]>;
+  workingDirectory: string;
+  env?: Record<string, string>;
+  workspaceSetupCommand?: string;
+}): Promise<string | undefined> {
+  const { sdk, source, workingDirectory, env, workspaceSetupCommand } = params;
+
+  await runSetupCommandOrThrow(
+    sdk,
+    {
+      cmd: "git",
+      args: ["rev-parse", "--is-inside-work-tree"],
+      cwd: workingDirectory,
+    },
+    "Workspace snapshot does not contain a git repository",
+  );
+
+  await ensureOriginRemote(sdk, workingDirectory, source.url);
+
+  await runSetupCommandOrThrow(
+    sdk,
+    { cmd: "git", args: ["reset", "--hard"], cwd: workingDirectory },
+    "Failed to reset workspace snapshot",
+  );
+  await runSetupCommandOrThrow(
+    sdk,
+    { cmd: "git", args: ["clean", "-ffd"], cwd: workingDirectory },
+    "Failed to clean workspace snapshot",
+  );
+
+  let currentBranch: string | undefined;
+
+  if (source.branch) {
+    await runSetupCommandOrThrow(
+      sdk,
+      {
+        cmd: "git",
+        args: ["fetch", "--prune", "--depth=1", "origin", source.branch],
+        cwd: workingDirectory,
+      },
+      `Failed to fetch branch '${source.branch}'`,
+    );
+    await runSetupCommandOrThrow(
+      sdk,
+      {
+        cmd: "git",
+        args: ["checkout", "-B", source.branch, "FETCH_HEAD"],
+        cwd: workingDirectory,
+      },
+      `Failed to checkout branch '${source.branch}'`,
+    );
+    currentBranch = source.branch;
+  } else {
+    await runSetupCommandOrThrow(
+      sdk,
+      {
+        cmd: "git",
+        args: ["fetch", "--prune", "--depth=1", "origin"],
+        cwd: workingDirectory,
+      },
+      "Failed to fetch repository default branch",
+    );
+    const baseRef = await getDefaultRemoteRef(sdk, workingDirectory);
+
+    if (source.newBranch) {
+      await runSetupCommandOrThrow(
+        sdk,
+        {
+          cmd: "git",
+          args: ["checkout", "-B", source.newBranch, baseRef],
+          cwd: workingDirectory,
+        },
+        `Failed to create branch '${source.newBranch}'`,
+      );
+      currentBranch = source.newBranch;
+    } else {
+      await runSetupCommandOrThrow(
+        sdk,
+        {
+          cmd: "git",
+          args: ["checkout", "-B", baseRef.replace(/^origin\//, ""), baseRef],
+          cwd: workingDirectory,
+        },
+        "Failed to checkout repository default branch",
+      );
+      currentBranch = baseRef.replace(/^origin\//, "");
+    }
+  }
+
+  if (workspaceSetupCommand?.trim()) {
+    await runSetupCommandOrThrow(
+      sdk,
+      {
+        cmd: "bash",
+        args: ["-lc", workspaceSetupCommand],
+        cwd: workingDirectory,
+        env,
+      },
+      "Workspace snapshot setup command failed",
+    );
+  }
+
+  return currentBranch;
+}
+
 type VercelSandboxSession = ReturnType<
   InstanceType<typeof VercelSandboxSDK>["currentSession"]
 >;
@@ -504,6 +724,8 @@ ${hostLine}${portLines}${runtimeEnvLine}`;
       runtime = "node22",
       ports,
       baseSnapshotId,
+      workspaceSnapshotId,
+      workspaceSetupCommand,
       persistent = true,
       snapshotExpiration,
       hooks,
@@ -538,6 +760,11 @@ ${hostLine}${portLines}${runtimeEnvLine}`;
         ...createBaseConfig,
         source: { type: "snapshot", snapshotId: restoreSnapshotId },
       });
+    } else if (workspaceSnapshotId) {
+      sdk = await VercelSandboxSDK.create({
+        ...createBaseConfig,
+        source: { type: "snapshot", snapshotId: workspaceSnapshotId },
+      });
     } else if (baseSnapshotId) {
       sdk = await VercelSandboxSDK.create({
         ...createBaseConfig,
@@ -558,11 +785,30 @@ ${hostLine}${portLines}${runtimeEnvLine}`;
 
     const workingDirectory = DEFAULT_WORKING_DIRECTORY;
 
+    let currentBranch: string | undefined;
+
+    if (source && workspaceSnapshotId) {
+      try {
+        currentBranch = await refreshWorkspaceSnapshotSource({
+          sdk,
+          source,
+          workingDirectory,
+          env,
+          workspaceSetupCommand,
+        });
+      } catch (error) {
+        if (githubToken) {
+          await clearGitHubCredentialBrokeringBestEffort(sdk);
+        }
+        throw error;
+      }
+    }
+
     // TODO: `git clone ... .` requires the directory to be empty. If the base
     // snapshot has files in /vercel/sandbox (dotfiles, tool configs, etc.), the
     // clone will fail. Consider using git init + remote add + fetch + checkout
     // instead, which works regardless of existing directory contents.
-    if (source && baseSnapshotId) {
+    if (source && baseSnapshotId && !workspaceSnapshotId) {
       const cloneArgs = ["clone"];
       if (source.branch) {
         cloneArgs.push("--branch", source.branch);
@@ -626,10 +872,8 @@ ${hostLine}${portLines}${runtimeEnvLine}`;
     }
 
     // Track the current branch
-    let currentBranch: string | undefined;
-
     // Create and checkout a new branch if specified
-    if (source?.newBranch) {
+    if (source?.newBranch && !workspaceSnapshotId) {
       const checkoutResult = await sdk.runCommand({
         cmd: "git",
         args: ["checkout", "-b", source.newBranch],
@@ -646,7 +890,7 @@ ${hostLine}${portLines}${runtimeEnvLine}`;
       }
 
       currentBranch = source.newBranch;
-    } else if (source?.branch) {
+    } else if (source?.branch && !workspaceSnapshotId) {
       currentBranch = source.branch;
     }
 
@@ -1013,9 +1257,9 @@ ${hostLine}${portLines}${runtimeEnvLine}`;
    * Create a native Vercel snapshot of the sandbox filesystem.
    * IMPORTANT: This automatically stops the sandbox after snapshot creation.
    */
-  async snapshot(): Promise<SnapshotResult> {
+  async snapshot(options?: { expiration?: number }): Promise<SnapshotResult> {
     // Use the current session snapshot method to avoid implicitly resuming stopped sandboxes.
-    const snapshot = await this.session.snapshot();
+    const snapshot = await this.session.snapshot(options);
 
     // Mark sandbox as stopped since native snapshot stops it automatically
     this.isStopped = true;

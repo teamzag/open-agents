@@ -11,7 +11,10 @@ interface ConnectOptions {
   timeout?: number;
   vcpus?: number;
   ports?: number[];
+  runtime?: "node22" | "node24" | "python3.13";
   baseSnapshotId?: string;
+  workspaceSnapshotId?: string;
+  workspaceSetupCommand?: string;
   resume?: boolean;
   createIfMissing?: boolean;
   persistent?: boolean;
@@ -80,8 +83,15 @@ function buildCreateConfig(
     ...(options?.timeout !== undefined && { timeout: options.timeout }),
     ...(options?.vcpus !== undefined && { vcpus: options.vcpus }),
     ...(options?.ports && { ports: options.ports }),
+    ...(options?.runtime !== undefined && { runtime: options.runtime }),
     ...(options?.baseSnapshotId && {
       baseSnapshotId: options.baseSnapshotId,
+    }),
+    ...(options?.workspaceSnapshotId && {
+      workspaceSnapshotId: options.workspaceSnapshotId,
+    }),
+    ...(options?.workspaceSetupCommand && {
+      workspaceSetupCommand: options.workspaceSetupCommand,
     }),
     ...(options?.persistent !== undefined && {
       persistent: options.persistent,

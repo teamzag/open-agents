@@ -7,7 +7,7 @@ interface SnapshotSandbox {
   workingDirectory: string;
   exec(command: string, cwd: string, timeoutMs: number): Promise<ExecResult>;
   stop(): Promise<void>;
-  snapshot?(): Promise<SnapshotResult>;
+  snapshot?(options?: { expiration?: number }): Promise<SnapshotResult>;
 }
 
 type SnapshotSandboxConnector = (
@@ -21,6 +21,7 @@ export interface RefreshBaseSnapshotOptions {
   commandTimeoutMs?: number;
   ports?: number[];
   env?: Record<string, string>;
+  snapshotExpiration?: number;
   log?: (message: string) => void;
 }
 
@@ -131,7 +132,11 @@ export async function refreshBaseSnapshot(
     }
 
     log("Creating snapshot from prepared sandbox.");
-    const snapshot = await sandbox.snapshot();
+    const snapshot = await sandbox.snapshot(
+      options.snapshotExpiration !== undefined
+        ? { expiration: options.snapshotExpiration }
+        : undefined,
+    );
     snapshotCreated = true;
     log(`Created snapshot ${snapshot.snapshotId}.`);
 

@@ -26,9 +26,13 @@ import { kickSandboxLifecycleWorkflow } from "@/lib/sandbox/lifecycle-kick";
 import {
   DEFAULT_SANDBOX_BASE_SNAPSHOT_ID,
   DEFAULT_SANDBOX_PORTS,
+  DEFAULT_SANDBOX_RUNTIME,
   DEFAULT_SANDBOX_TIMEOUT_MS,
   DEFAULT_SANDBOX_VCPUS,
+  DEFAULT_SANDBOX_WORKSPACE_SETUP_COMMAND,
+  getWorkspaceSnapshotIdForRepo,
 } from "@/lib/sandbox/config";
+import { getSandboxCommandEnvForRepo } from "@/lib/sandbox/session-env";
 import {
   getResumableSandboxName,
   getSessionSandboxName,
@@ -46,6 +50,7 @@ export type ResolvedChatSandboxRuntime = {
   workingDirectory: string;
   currentBranch?: string;
   environmentDetails?: string;
+  env?: Record<string, string>;
   skills: DiscoveredSkills;
   didSetupWorkspace: boolean;
   sessionTitle: string;
@@ -231,16 +236,30 @@ export async function resolveChatSandboxRuntime(params: {
   }
 
   let sandbox: Sandbox;
+  const sandboxEnv = getSandboxCommandEnvForRepo(
+    session.repoOwner,
+    session.repoName,
+  );
+  const workspaceSnapshotId = getWorkspaceSnapshotIdForRepo(
+    session.repoOwner,
+    session.repoName,
+  );
   try {
     sandbox = await connectSandbox({
       state: buildSandboxState(session),
       options: {
+        env: sandboxEnv,
         githubToken: setupToken?.token,
         gitUser,
         timeout: DEFAULT_SANDBOX_TIMEOUT_MS,
         vcpus: DEFAULT_SANDBOX_VCPUS,
         ports: DEFAULT_SANDBOX_PORTS,
+        runtime: DEFAULT_SANDBOX_RUNTIME,
         baseSnapshotId: DEFAULT_SANDBOX_BASE_SNAPSHOT_ID,
+        workspaceSnapshotId,
+        workspaceSetupCommand: workspaceSnapshotId
+          ? DEFAULT_SANDBOX_WORKSPACE_SETUP_COMMAND
+          : undefined,
         persistent: true,
         resume: true,
         createIfMissing: true,
@@ -288,6 +307,7 @@ export async function resolveChatSandboxRuntime(params: {
     workingDirectory: sandbox.workingDirectory,
     currentBranch: sandbox.currentBranch,
     environmentDetails: sandbox.environmentDetails,
+    env: sandboxEnv,
     skills,
     didSetupWorkspace,
     sessionTitle: session.title,
