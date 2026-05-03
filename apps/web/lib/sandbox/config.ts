@@ -40,14 +40,14 @@ export const CODE_SERVER_PORT = 8000;
 /** Default working directory for sandboxes, used for path display */
 export const DEFAULT_WORKING_DIRECTORY = "/vercel/sandbox";
 
+function getSandboxBaseSnapshotId(): string | undefined {
+  const value = process.env.VERCEL_SANDBOX_BASE_SNAPSHOT_ID?.trim();
+  return value ? value : undefined;
+}
+
 /**
- * Base snapshot for fresh cloud sandboxes.
- * - Current snapshot includes: bun + jq + agent-browser + chromium + code-server
- * - Previous snapshot includes: bun + jq + agent-browser + chromium
+ * Optional base snapshot for fresh cloud sandboxes.
+ * Snapshot IDs are scoped to the Vercel project/team that created them, so forks
+ * must opt into their own snapshot instead of using the upstream project's ID.
  */
-export const DEFAULT_SANDBOX_BASE_SNAPSHOT_ID =
-  process.env.VERCEL_SANDBOX_BASE_SNAPSHOT_ID ??
-  // Previous snapshot (bun + jq): "snap_MQ0NqdLL5qEXiYusgWL3K0yaMmql"
-  // Previous snapshot (bun + jq + agent-browser + chromium): "snap_C8tUFhwRXZky4MaFvTuwO7DH66wx"
-  // Current snapshot (bun + jq + agent-browser + chromium + code-server):
-  "snap_EjsphVxi07bFKrfojljJdIS41KHT";
+export const DEFAULT_SANDBOX_BASE_SNAPSHOT_ID = getSandboxBaseSnapshotId();
