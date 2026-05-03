@@ -3336,14 +3336,15 @@ export function SessionChatContent({
                               <div className="flex max-w-md flex-col items-center gap-4 text-center">
                                 <div className="space-y-1.5">
                                   <p className="text-sm font-medium text-foreground">
-                                    Request changes, ask questions, or have the
-                                    agent run commands in the sandboxed
-                                    workspace.
+                                    This is the chat agent. It runs outside the
+                                    sandbox and works on the repo through tools
+                                    like file reads, edits, search, and shell
+                                    commands.
                                   </p>
                                   <p className="text-sm text-muted-foreground">
-                                    To work directly inside the same
-                                    environment, start or resume the session and
-                                    open the editor.
+                                    To run an agent inside the sandbox, open the
+                                    editor and launch Claude Code or Codex from
+                                    the terminal.
                                   </p>
                                 </div>
                                 {!isArchived && canUseCodeEditor && (
