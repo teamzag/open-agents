@@ -2700,10 +2700,67 @@ export function SessionChatContent({
     sessionId: session.id,
     canRun: canRunDevServer && canUseCodeEditor,
   });
+  const isSandboxStartupBusy =
+    isCreatingSandbox ||
+    isRestoringSnapshot ||
+    isReconnectingSandbox ||
+    isHibernatingUi;
+  const sandboxStartLabel =
+    hasSnapshot || hasRuntimeSandboxState ? "Resume Session" : "Start Sandbox";
+  const sandboxStartProgressLabel =
+    hasSnapshot || hasRuntimeSandboxState ? "Resuming..." : "Starting...";
+  const canStartSandboxFromUi =
+    !isArchived && !isSandboxActive && !isSandboxStartupBusy;
   const isCodeEditorActionDisabled =
     !canUseCodeEditor ||
+    isSandboxStartupBusy ||
     codeEditor.state.status === "starting" ||
     codeEditor.state.status === "stopping";
+
+  const handleStartSandboxFromUi = useCallback(async (): Promise<boolean> => {
+    if (isArchived) {
+      return false;
+    }
+    if (isSandboxActive) {
+      return true;
+    }
+
+    if (hasSnapshot || hasRuntimeSandboxState) {
+      await _handleRestoreSnapshot();
+    } else {
+      await _handleCreateNewSandbox();
+    }
+
+    return waitForSandboxReady(4);
+  }, [
+    isArchived,
+    isSandboxActive,
+    hasSnapshot,
+    hasRuntimeSandboxState,
+    _handleRestoreSnapshot,
+    _handleCreateNewSandbox,
+    waitForSandboxReady,
+  ]);
+
+  const handleOpenEditorFromUi = useCallback(async () => {
+    if (!canUseCodeEditor) {
+      return;
+    }
+
+    const sandboxReady = isSandboxActive
+      ? true
+      : await handleStartSandboxFromUi();
+    if (!sandboxReady) {
+      return;
+    }
+
+    await codeEditor.handleOpen();
+  }, [
+    canUseCodeEditor,
+    isSandboxActive,
+    handleStartSandboxFromUi,
+    codeEditor.handleOpen,
+  ]);
 
   const hasRepo = Boolean(session.cloneUrl);
   const hasExistingPr = session.prNumber != null;
@@ -2792,7 +2849,9 @@ export function SessionChatContent({
     prDeploymentUrl ??
     (isDeploymentFailed ? failedDeploymentUrl : null);
   const showHeaderActions =
-    canRunDevServer || Boolean(previewDeploymentTargetUrl);
+    canRunDevServer ||
+    (!isArchived && canUseCodeEditor) ||
+    Boolean(previewDeploymentTargetUrl);
 
   // When auto-commit lands (transitions from committing to clean), mark the
   // current preview deployment as stale so the UI shows "Deploying…" until
@@ -2988,6 +3047,67 @@ export function SessionChatContent({
         showHeaderActions &&
         createPortal(
           <div className="flex items-center gap-1">
+            {!canRunDevServer && !isArchived && canUseCodeEditor && (
+              <>
+                {!isSandboxActive && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="hidden sm:inline-flex">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 gap-1.5 px-2 text-xs"
+                          onClick={() => void handleStartSandboxFromUi()}
+                          disabled={!canStartSandboxFromUi}
+                        >
+                          {isSandboxStartupBusy ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <RefreshCw className="h-3.5 w-3.5" />
+                          )}
+                          <span>
+                            {isSandboxStartupBusy
+                              ? sandboxStartProgressLabel
+                              : sandboxStartLabel}
+                          </span>
+                        </Button>
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">
+                      {isSandboxStartupBusy
+                        ? sandboxStartProgressLabel
+                        : `${sandboxStartLabel} before opening tools`}
+                    </TooltipContent>
+                  </Tooltip>
+                )}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="hidden sm:inline-flex">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={() => void handleOpenEditorFromUi()}
+                        disabled={isCodeEditorActionDisabled}
+                      >
+                        {codeEditor.state.status === "starting" ||
+                        isSandboxStartupBusy ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Code2 className="h-3.5 w-3.5" />
+                        )}
+                      </Button>
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="max-w-72 text-pretty">
+                    {codeEditorDisabledReason ??
+                      (isSandboxActive
+                        ? codeEditor.menuLabel
+                        : `${sandboxStartLabel} and open editor`)}
+                  </TooltipContent>
+                </Tooltip>
+              </>
+            )}
             {canRunDevServer && (
               <>
                 <Tooltip>
@@ -2997,7 +3117,7 @@ export function SessionChatContent({
                         variant="ghost"
                         size="icon"
                         className="h-7 w-7"
-                        onClick={() => void codeEditor.handleOpen()}
+                        onClick={() => void handleOpenEditorFromUi()}
                         disabled={isCodeEditorActionDisabled}
                       >
                         {codeEditor.state.status === "starting" ? (
@@ -3213,9 +3333,65 @@ export function SessionChatContent({
                         {groupedRenderMessages.length === 0 &&
                           !hasPendingResponse && (
                             <div className="flex h-full min-h-[40vh] items-center justify-center">
-                              <p className="text-sm text-muted-foreground">
-                                Send a message to get started
-                              </p>
+                              <div className="flex max-w-md flex-col items-center gap-4 text-center">
+                                <div className="space-y-1.5">
+                                  <p className="text-sm font-medium text-foreground">
+                                    Request changes, ask questions, or have the
+                                    agent run commands in the sandboxed
+                                    workspace.
+                                  </p>
+                                  <p className="text-sm text-muted-foreground">
+                                    To work directly inside the same
+                                    environment, start or resume the session and
+                                    open the editor.
+                                  </p>
+                                </div>
+                                {!isArchived && canUseCodeEditor && (
+                                  <div className="flex flex-wrap items-center justify-center gap-2">
+                                    {!isSandboxActive && (
+                                      <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() =>
+                                          void handleStartSandboxFromUi()
+                                        }
+                                        disabled={!canStartSandboxFromUi}
+                                      >
+                                        {isSandboxStartupBusy ? (
+                                          <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                                        ) : (
+                                          <RefreshCw className="mr-2 h-3.5 w-3.5" />
+                                        )}
+                                        {isSandboxStartupBusy
+                                          ? sandboxStartProgressLabel
+                                          : sandboxStartLabel}
+                                      </Button>
+                                    )}
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      onClick={() =>
+                                        void handleOpenEditorFromUi()
+                                      }
+                                      disabled={isCodeEditorActionDisabled}
+                                    >
+                                      {codeEditor.state.status ===
+                                        "starting" || isSandboxStartupBusy ? (
+                                        <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                                      ) : (
+                                        <Code2 className="mr-2 h-3.5 w-3.5" />
+                                      )}
+                                      Open Editor
+                                    </Button>
+                                  </div>
+                                )}
+                                {codeEditorDisabledReason && (
+                                  <p className="text-xs text-muted-foreground">
+                                    {codeEditorDisabledReason}
+                                  </p>
+                                )}
+                              </div>
                             </div>
                           )}
                         {groupedRenderMessages.map(
