@@ -1,0 +1,7 @@
+# Never upload local secrets during Vercel CLI deploys.
+.env
+.env.local
+.env.*.local
+**/.env
+**/.env.local
+**/.env.*.local

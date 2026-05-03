@@ -68,6 +68,26 @@ function getAllowedAuthHosts(): string[] {
 const authBaseURLFallback = getAuthBaseURLFallback();
 const authAllowedHosts = getAllowedAuthHosts();
 
+function normalizeUsername(value?: string | null): string | null {
+  const normalized = value?.trim().toLowerCase().replace(/[^a-z0-9_.-]/g, "-");
+  return normalized || null;
+}
+
+function getVercelUsername(profile: {
+  preferred_username?: string | null;
+  name?: string | null;
+  email?: string | null;
+  sub?: string | null;
+}): string {
+  return (
+    normalizeUsername(profile.preferred_username) ??
+    normalizeUsername(profile.name) ??
+    normalizeUsername(profile.email?.split("@")[0]) ??
+    normalizeUsername(profile.sub) ??
+    `user-${nanoid()}`
+  );
+}
+
 export const auth = betterAuth({
   secret: process.env.BETTER_AUTH_SECRET,
   baseURL: {
@@ -115,6 +135,9 @@ export const auth = betterAuth({
       clientSecret: process.env.VERCEL_APP_CLIENT_SECRET ?? "",
       scope: ["openid", "email", "profile", "offline_access"],
       overrideUserInfoOnSignIn: true,
+      mapProfileToUser: (profile) => ({
+        username: getVercelUsername(profile),
+      }),
     },
     github: {
       clientId: process.env.NEXT_PUBLIC_GITHUB_CLIENT_ID ?? "",
