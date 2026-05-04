@@ -234,6 +234,7 @@ bun run check
 bun run typecheck
 bun run ci
 bun run sandbox:snapshot-base
+bun run sandbox:snapshot-zag
 ```
 
 ## Repo layout
