@@ -1,0 +1,788 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SOURCE" ]; do
+  SOURCE_DIR="$(cd "$(dirname "$SOURCE")" && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  case "$SOURCE" in
+    /*) ;;
+    *) SOURCE="$SOURCE_DIR/$SOURCE" ;;
+  esac
+done
+
+SCRIPT_DIR="$(cd "$(dirname "$SOURCE")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+SANDBOX_SDK_DIR="$REPO_ROOT/packages/sandbox"
+ZAG_REPO_DIR="${ZAG_COMPUTER_ZAG_REPO_DIR:-$HOME/zag}"
+PREVIEW_PORT="${ZAG_COMPUTER_PREVIEW_PORT:-3000}"
+LANDING_PORT="${ZAG_COMPUTER_LANDING_PORT:-$PREVIEW_PORT}"
+CONSOLE_PORT="${ZAG_COMPUTER_CONSOLE_PORT:-3001}"
+REMOTE_SCRIPT_DIR="${ZAG_COMPUTER_REMOTE_SCRIPT_DIR:-/tmp}"
+LEGACY_TMUX_PREFIX="${ZAG_COMPUTER_LEGACY_TMUX_PREFIX:-zag-computer}"
+PROMPT_WAIT_ATTEMPTS="${ZAG_COMPUTER_PROMPT_WAIT_ATTEMPTS:-40}"
+PROMPT_WAIT_DELAY_SECONDS="${ZAG_COMPUTER_PROMPT_WAIT_DELAY_SECONDS:-0.5}"
+TEMP_DIRS=()
+
+cleanup() {
+  local dir
+
+  for dir in "${TEMP_DIRS[@]:-}"; do
+    rm -rf "$dir"
+  done
+}
+
+trap cleanup EXIT
+
+usage() {
+  cat >&2 <<'USAGE'
+Usage: zag-computer <sandbox-name>
+
+Open a cmux workspace attached to a running Vercel Sandbox.
+
+Example:
+  zag-computer session_abc123
+USAGE
+}
+
+die() {
+  printf 'zag-computer: %s\n' "$*" >&2
+  exit 1
+}
+
+require_command() {
+  local command_name="$1"
+  local install_hint="$2"
+
+  if ! command -v "$command_name" >/dev/null 2>&1; then
+    die "$command_name is not installed or not on PATH.
+$install_hint"
+  fi
+}
+
+shell_quote() {
+  printf "'"
+  printf "%s" "$1" | sed "s/'/'\\\\''/g"
+  printf "'"
+}
+
+parse_workspace_ref() {
+  sed -nE 's/.*(workspace:[^[:space:]]+).*/\1/p' | tail -n 1
+}
+
+parse_key_ref() {
+  local key="$1"
+  sed -nE "s/.*(${key}[:=][^[:space:]]+).*/\\1/p" | tail -n 1
+}
+
+get_first_pane() {
+  local workspace_ref="$1"
+
+  cmux list-panes --workspace "$workspace_ref" |
+    sed -nE 's/^[*[:space:]]*(pane:[^[:space:]]+).*/\1/p' |
+    head -n 1
+}
+
+cmux_supports_new_workspace_name() {
+  cmux new-workspace --help 2>&1 | grep -q -- '--name'
+}
+
+get_first_surface() {
+  local workspace_ref="$1"
+  local output
+
+  if output="$(cmux list-panels --workspace "$workspace_ref" 2>/dev/null)"; then
+    printf "%s\n" "$output" |
+      sed -nE 's/^[*[:space:]]*(surface:[^[:space:]]+).*/\1/p' |
+      head -n 1
+    return
+  fi
+
+  output="$(cmux list-surfaces --workspace "$workspace_ref")"
+  printf "%s\n" "$output" |
+    sed -nE 's/^[*[:space:]]*(surface:[^[:space:]]+).*/\1/p' |
+    head -n 1
+}
+
+get_first_pane_surface() {
+  local workspace_ref="$1"
+  local pane_ref="$2"
+
+  cmux list-pane-surfaces --workspace "$workspace_ref" --pane "$pane_ref" |
+    sed -nE 's/^[*[:space:]]*(surface:[^[:space:]]+).*/\1/p' |
+    head -n 1
+}
+
+require_ref() {
+  local label="$1"
+  local ref="$2"
+  local output="${3:-}"
+
+  if [ -n "$ref" ]; then
+    return
+  fi
+
+  if [ -n "$output" ]; then
+    die "could not parse $label from output:
+$output"
+  fi
+
+  die "could not find $label"
+}
+
+focus_surface() {
+  local workspace_ref="$1"
+  local surface_ref="$2"
+
+  cmux focus-panel --workspace "$workspace_ref" --panel "$surface_ref" >/dev/null
+}
+
+send_to_surface() {
+  local workspace_ref="$1"
+  local surface_ref="$2"
+  local text="$3"
+
+  cmux send --workspace "$workspace_ref" --surface "$surface_ref" "$text" >/dev/null
+}
+
+wait_for_sandbox_prompt() {
+  local workspace_ref="$1"
+  local surface_ref="$2"
+  local attempt
+
+  for ((attempt = 0; attempt < PROMPT_WAIT_ATTEMPTS; attempt++)); do
+    if cmux read-screen --workspace "$workspace_ref" --surface "$surface_ref" --lines 12 2>/dev/null |
+      grep -q '▲ /vercel/sandbox'; then
+      return 0
+    fi
+
+    sleep "$PROMPT_WAIT_DELAY_SECONDS"
+  done
+
+  return 1
+}
+
+send_when_sandbox_ready() {
+  local workspace_ref="$1"
+  local surface_ref="$2"
+  local text="$3"
+
+  if ! wait_for_sandbox_prompt "$workspace_ref" "$surface_ref"; then
+    printf 'Warning: sandbox prompt not detected for %s; sending command anyway.\n' "$surface_ref" >&2
+  fi
+
+  send_to_surface "$workspace_ref" "$surface_ref" "$text"
+}
+
+rename_tab() {
+  local workspace_ref="$1"
+  local surface_ref="$2"
+  local title="$3"
+
+  cmux rename-tab --workspace "$workspace_ref" --surface "$surface_ref" -- "$title" >/dev/null
+}
+
+reorder_after() {
+  local surface_ref="$1"
+  local after_ref="$2"
+
+  cmux reorder-surface --surface "$surface_ref" --after "$after_ref" >/dev/null
+}
+
+create_terminal_surface() {
+  local workspace_ref="$1"
+  local pane_ref="$2"
+  local title="$3"
+  local output
+  local surface_ref
+
+  output="$(
+    cmux new-surface \
+      --workspace "$workspace_ref" \
+      --pane "$pane_ref" \
+      --type terminal
+  )"
+
+  surface_ref="$(printf "%s\n" "$output" | parse_key_ref "surface")"
+  require_ref "$title terminal surface" "$surface_ref" "$output"
+  rename_tab "$workspace_ref" "$surface_ref" "$title"
+  printf "%s\n" "$surface_ref"
+}
+
+create_browser_surface() {
+  local workspace_ref="$1"
+  local pane_ref="$2"
+  local title="$3"
+  local url="$4"
+  local output
+  local surface_ref
+
+  output="$(
+    cmux new-surface \
+      --workspace "$workspace_ref" \
+      --pane "$pane_ref" \
+      --type browser \
+      --url "$url"
+  )"
+
+  surface_ref="$(printf "%s\n" "$output" | parse_key_ref "surface")"
+  require_ref "$title browser surface" "$surface_ref" "$output"
+  rename_tab "$workspace_ref" "$surface_ref" "$title"
+  printf "%s\n" "$surface_ref"
+}
+
+create_terminal_pane() {
+  local workspace_ref="$1"
+  local direction="$2"
+  local output
+  local pane_ref
+  local surface_ref
+
+  output="$(
+    cmux new-pane \
+      --workspace "$workspace_ref" \
+      --direction "$direction" \
+      --type terminal
+  )"
+
+  pane_ref="$(printf "%s\n" "$output" | parse_key_ref "pane")"
+  surface_ref="$(printf "%s\n" "$output" | parse_key_ref "surface")"
+  require_ref "$direction terminal pane" "$pane_ref" "$output"
+  require_ref "$direction terminal pane surface" "$surface_ref" "$output"
+  printf "%s %s\n" "$pane_ref" "$surface_ref"
+}
+
+create_browser_pane() {
+  local workspace_ref="$1"
+  local direction="$2"
+  local title="$3"
+  local url="$4"
+  local output
+  local pane_ref
+  local surface_ref
+
+  output="$(
+    cmux new-pane \
+      --workspace "$workspace_ref" \
+      --direction "$direction" \
+      --type browser \
+      --url "$url"
+  )"
+
+  pane_ref="$(printf "%s\n" "$output" | parse_key_ref "pane")"
+  surface_ref="$(printf "%s\n" "$output" | parse_key_ref "surface")"
+  require_ref "$title browser pane" "$pane_ref" "$output"
+  require_ref "$title browser surface" "$surface_ref" "$output"
+  rename_tab "$workspace_ref" "$surface_ref" "$title"
+  printf "%s %s\n" "$pane_ref" "$surface_ref"
+}
+
+connect_surface() {
+  local workspace_ref="$1"
+  local surface_ref="$2"
+
+  send_to_surface "$workspace_ref" "$surface_ref" "${CONNECT_COMMAND}"$'\n'
+}
+
+remote_exec_command() {
+  local command="$1"
+
+  printf "exec bash -lc %s" "$(shell_quote "$command")"
+}
+
+write_database_script() {
+  local path="$1"
+
+  cat > "$path" <<'SCRIPT'
+#!/usr/bin/env bash
+set -euo pipefail
+
+[ -f ~/.zag-computer-env ] && . ~/.zag-computer-env
+
+valid_database_url() {
+  case "${1:-}" in
+    postgres://*|postgresql://*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+current_database_url() {
+  printf "%s" "${DATABASE_URL:-${POSTGRES_URL:-${NEON_DATABASE_URL:-}}}"
+}
+
+if [ "${ZAG_COMPUTER_DOTENV_LOADED:-}" != "1" ]; then
+  url="$(current_database_url)"
+  if ! valid_database_url "$url"; then
+    if [ -z "${DOTENV_PRIVATE_KEY:-}" ]; then
+      echo "No valid Postgres connection URL found in DATABASE_URL, POSTGRES_URL, or NEON_DATABASE_URL."
+      echo "If .env is encrypted, make sure DOTENV_PRIVATE_KEY is injected into this sandbox."
+      exit 1
+    fi
+
+    export ZAG_COMPUTER_DOTENV_LOADED=1
+    exec pnpm exec dotenvx run -f .env -- "$0"
+  fi
+fi
+
+export PATH="$HOME/.local/bin:$PATH"
+
+if ! command -v rainfrog >/dev/null 2>&1; then
+  version="${RAINFOG_VERSION:-v0.3.18}"
+  arch="$(uname -m)"
+  case "$arch" in
+    x86_64) target="x86_64-unknown-linux-musl" ;;
+    aarch64|arm64) target="aarch64-unknown-linux-musl" ;;
+    *) echo "Unsupported architecture for rainfrog: $arch" >&2; exit 1 ;;
+  esac
+
+  mkdir -p "$HOME/.local/bin" /tmp/rainfrog-install
+  rm -rf /tmp/rainfrog-install/*
+  rainfrog_url="https://github.com/achristmascarl/rainfrog/releases/download/${version}/rainfrog-${version}-${target}.tar.gz"
+  echo "Installing rainfrog ${version}..."
+  curl -fsSL "$rainfrog_url" -o /tmp/rainfrog-install/rainfrog.tar.gz
+  tar -xzf /tmp/rainfrog-install/rainfrog.tar.gz -C /tmp/rainfrog-install
+  find /tmp/rainfrog-install -type f -perm -111 -name rainfrog -print -quit |
+    xargs -I{} cp {} "$HOME/.local/bin/rainfrog"
+  chmod +x "$HOME/.local/bin/rainfrog"
+fi
+
+url="$(current_database_url)"
+if ! valid_database_url "$url"; then
+  echo "No valid Postgres connection URL found in DATABASE_URL, POSTGRES_URL, or NEON_DATABASE_URL."
+  exit 1
+fi
+
+exec rainfrog --url "$url"
+SCRIPT
+}
+
+write_dev_server_script() {
+  local path="$1"
+
+  cat > "$path" <<'SCRIPT'
+#!/usr/bin/env bash
+set -euo pipefail
+
+[ -f ~/.zag-computer-env ] && . ~/.zag-computer-env
+
+log=.open-agents-dev-server.log
+pid_file=.open-agents-dev-server-3000.pid
+
+process_running() {
+  local pid="${1:-}"
+
+  [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null
+}
+
+stop_pid() {
+  local pid="${1:-}"
+  local label="${2:-process}"
+
+  if ! process_running "$pid"; then
+    return
+  fi
+
+  echo "Stopping existing $label: PID $pid"
+  kill "$pid" 2>/dev/null || true
+
+  for _ in $(seq 1 20); do
+    if ! process_running "$pid"; then
+      return
+    fi
+    sleep 0.25
+  done
+
+  echo "Force stopping $label: PID $pid"
+  kill -9 "$pid" 2>/dev/null || true
+}
+
+free_dev_ports() {
+  local port
+
+  for port in 3000 3001 3002; do
+    if command -v lsof >/dev/null 2>&1; then
+      while IFS= read -r pid; do
+        stop_pid "$pid" "process on port $port"
+      done < <(lsof -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null || true)
+    fi
+  done
+}
+
+stop_existing_zag_dev_processes() {
+  while IFS= read -r pid; do
+    stop_pid "$pid" "existing Zag dev process"
+  done < <(
+    ps -eo pid=,command= |
+      awk '
+        /\/vercel\/sandbox/ &&
+        (/pnpm dev/ || /turbo dev/ || /next dev/ || /next-server/) {
+          print $1
+        }
+      ' || true
+  )
+}
+
+start_dev_server() {
+  free_dev_ports
+  stop_existing_zag_dev_processes
+  rm -f "$pid_file"
+  : > "$log"
+
+  echo "Starting detached pnpm dev."
+  echo "Landing: http://localhost:3000"
+  echo "Console: http://localhost:3001"
+  echo
+
+  nohup bash -lc 'exec pnpm dev' >>"$log" 2>&1 &
+  echo "$!" > "$pid_file"
+
+  sleep 0.5
+  if ! process_running "$(cat "$pid_file" 2>/dev/null || true)"; then
+    echo "pnpm dev exited during startup. Recent logs:"
+    tail -n 80 "$log" || true
+    exit 1
+  fi
+}
+
+pid="$(cat "$pid_file" 2>/dev/null || true)"
+
+if process_running "$pid"; then
+  echo "Using running pnpm dev: PID $pid"
+else
+  start_dev_server
+fi
+
+echo "Tailing $log. Scroll here with normal cmux terminal scrollback."
+echo
+exec tail -n 200 -F "$log"
+SCRIPT
+}
+
+write_psql_script() {
+  local path="$1"
+
+  cat > "$path" <<'SCRIPT'
+#!/usr/bin/env bash
+set -euo pipefail
+
+[ -f ~/.zag-computer-env ] && . ~/.zag-computer-env
+
+valid_database_url() {
+  case "${1:-}" in
+    postgres://*|postgresql://*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+current_database_url() {
+  printf "%s" "${DATABASE_URL:-${POSTGRES_URL:-${NEON_DATABASE_URL:-}}}"
+}
+
+if [ "${ZAG_COMPUTER_DOTENV_LOADED:-}" != "1" ]; then
+  url="$(current_database_url)"
+  if ! valid_database_url "$url"; then
+    if [ -z "${DOTENV_PRIVATE_KEY:-}" ]; then
+      echo "No valid Postgres connection URL found in DATABASE_URL, POSTGRES_URL, or NEON_DATABASE_URL."
+      echo "If .env is encrypted, make sure DOTENV_PRIVATE_KEY is injected into this sandbox."
+      exit 1
+    fi
+
+    export ZAG_COMPUTER_DOTENV_LOADED=1
+    exec pnpm exec dotenvx run -f .env -- "$0"
+  fi
+fi
+
+if ! command -v psql >/dev/null 2>&1; then
+  if command -v sudo >/dev/null 2>&1 && command -v dnf >/dev/null 2>&1; then
+    echo "Installing psql..."
+    sudo dnf install -y postgresql16
+  else
+    echo "psql is not installed, and this sandbox cannot install it automatically."
+    exit 1
+  fi
+fi
+
+url="$(current_database_url)"
+if ! valid_database_url "$url"; then
+  echo "No valid Postgres connection URL found in DATABASE_URL, POSTGRES_URL, or NEON_DATABASE_URL."
+  exit 1
+fi
+
+exec psql "$url"
+SCRIPT
+}
+
+install_remote_scripts() {
+  local temp_dir
+  local database_script
+  local dev_server_script
+  local psql_script
+
+  temp_dir="$(mktemp -d)"
+  TEMP_DIRS+=("$temp_dir")
+  database_script="$temp_dir/zag-computer-database.sh"
+  dev_server_script="$temp_dir/zag-computer-dev-server.sh"
+  psql_script="$temp_dir/zag-computer-psql.sh"
+
+  write_database_script "$database_script"
+  write_dev_server_script "$dev_server_script"
+  write_psql_script "$psql_script"
+  chmod +x "$database_script" "$dev_server_script" "$psql_script"
+
+  sandbox cp "$database_script" "$SANDBOX_NAME:$REMOTE_DATABASE_SCRIPT" >/dev/null
+  sandbox cp "$dev_server_script" "$SANDBOX_NAME:$REMOTE_DEV_SERVER_SCRIPT" >/dev/null
+  sandbox cp "$psql_script" "$SANDBOX_NAME:$REMOTE_PSQL_SCRIPT" >/dev/null
+  sandbox exec "$SANDBOX_NAME" -- chmod +x "$REMOTE_DATABASE_SCRIPT" "$REMOTE_DEV_SERVER_SCRIPT" "$REMOTE_PSQL_SCRIPT" >/dev/null
+}
+
+cleanup_legacy_tmux_sessions() {
+  local prefix_arg
+
+  prefix_arg="$(shell_quote "$LEGACY_TMUX_PREFIX")"
+  sandbox exec "$SANDBOX_NAME" -- bash -lc "
+    prefix=$prefix_arg
+    command -v tmux >/dev/null 2>&1 || exit 0
+    tmux list-sessions -F '#{session_name}' 2>/dev/null |
+      while IFS= read -r session_name; do
+        case \"\$session_name\" in
+          \"\$prefix\"|\"\$prefix\"-*) tmux kill-session -t \"\$session_name\" ;;
+        esac
+      done
+  " >/dev/null 2>&1 || true
+}
+
+resolve_route_url() {
+  local sandbox_name="$1"
+  local port="$2"
+  local override_var_name="${3:-}"
+
+  if [ -n "$override_var_name" ]; then
+    local override_value="${!override_var_name:-}"
+    if [ -n "$override_value" ]; then
+      printf "%s\n" "$override_value"
+      return
+    fi
+  fi
+
+  if [ "$port" = "$PREVIEW_PORT" ] && [ -n "${ZAG_COMPUTER_PREVIEW_URL:-}" ]; then
+    printf "%s\n" "$ZAG_COMPUTER_PREVIEW_URL"
+    return
+  fi
+
+  if ! command -v node >/dev/null 2>&1; then
+    die "node is required to resolve the sandbox preview URL."
+  fi
+
+  if [ ! -d "$SANDBOX_SDK_DIR/node_modules/@vercel/sandbox" ]; then
+    die "cannot find @vercel/sandbox in $SANDBOX_SDK_DIR/node_modules.
+Run 'bun install' from $REPO_ROOT, then try again."
+  fi
+
+  (
+    cd "$SANDBOX_SDK_DIR"
+    node --input-type=module - "$sandbox_name" "$port" <<'NODE'
+import { Sandbox } from "@vercel/sandbox";
+
+const sandboxName = process.argv[2];
+const previewPort = Number(process.argv[3]);
+
+if (!sandboxName || !Number.isInteger(previewPort)) {
+  console.error("Invalid sandbox name or preview port.");
+  process.exit(1);
+}
+
+const sandbox = await Sandbox.get({ name: sandboxName });
+const route = sandbox.routes.find(({ port }) => port === previewPort);
+
+if (!route) {
+  console.error(`No published route found for port ${previewPort}.`);
+  console.error("Make sure the sandbox was created with that port exposed.");
+  process.exit(1);
+}
+
+console.log(route.url);
+NODE
+  )
+}
+
+resolve_optional_route_url() {
+  local sandbox_name="$1"
+  local port="$2"
+  local override_var_name="${3:-}"
+
+  resolve_route_url "$sandbox_name" "$port" "$override_var_name" 2>/dev/null || true
+}
+
+if [ "$#" -ne 1 ]; then
+  usage
+  exit 1
+fi
+
+SANDBOX_NAME="$1"
+
+if ! [[ "$SANDBOX_NAME" =~ ^[A-Za-z0-9_.-]+$ ]]; then
+  die "invalid sandbox name: $SANDBOX_NAME"
+fi
+
+REMOTE_DATABASE_SCRIPT="$REMOTE_SCRIPT_DIR/zag-computer-database-$SANDBOX_NAME.sh"
+REMOTE_DEV_SERVER_SCRIPT="$REMOTE_SCRIPT_DIR/zag-computer-dev-server-$SANDBOX_NAME.sh"
+REMOTE_PSQL_SCRIPT="$REMOTE_SCRIPT_DIR/zag-computer-psql-$SANDBOX_NAME.sh"
+
+require_command "cmux" "Install cmux: https://cmux.com/docs/getting-started"
+require_command "sandbox" "Install the Vercel Sandbox CLI with 'pnpm i -g sandbox', then run 'sandbox login'."
+SANDBOX_BIN="$(command -v sandbox)"
+REPO_ROOT_ARG="$(shell_quote "$REPO_ROOT")"
+
+if ! cmux ping >/dev/null 2>&1; then
+  die "cmux is installed, but its socket is not responding.
+Open the cmux app and make sure the CLI/socket API is enabled."
+fi
+
+SANDBOX_ARG="$(shell_quote "$SANDBOX_NAME")"
+SANDBOX_PROMPT="${ZAG_COMPUTER_PS1:-▲ \\w/ }"
+SANDBOX_PROMPT_ARG="$(shell_quote "PS1=$SANDBOX_PROMPT")"
+CONNECT_COMMAND="cd $REPO_ROOT_ARG && $(shell_quote "$SANDBOX_BIN") connect --workdir /vercel/sandbox --env $SANDBOX_PROMPT_ARG $SANDBOX_ARG"
+LANDING_URL="$(resolve_route_url "$SANDBOX_NAME" "$LANDING_PORT" "ZAG_COMPUTER_LANDING_URL")"
+CONSOLE_URL="$(resolve_optional_route_url "$SANDBOX_NAME" "$CONSOLE_PORT" "ZAG_COMPUTER_CONSOLE_URL")"
+SANDBOX_SHORT="${SANDBOX_NAME#session_}"
+SANDBOX_SHORT="${SANDBOX_SHORT:0:8}"
+WORKSPACE_TITLE="${ZAG_COMPUTER_WORKSPACE_TITLE:-zag · $SANDBOX_SHORT}"
+SHELL_TAB_TITLE="${ZAG_COMPUTER_SHELL_TAB_TITLE:-shell}"
+LANDING_TAB_TITLE="${ZAG_COMPUTER_LANDING_TAB_TITLE:-landing}"
+CONSOLE_TAB_TITLE="${ZAG_COMPUTER_CONSOLE_TAB_TITLE:-console}"
+SOURCE_CONTROL_TAB_TITLE="${ZAG_COMPUTER_SOURCE_CONTROL_TAB_TITLE:-source-control}"
+CLAUDE_TAB_TITLE="${ZAG_COMPUTER_CLAUDE_TAB_TITLE:-claude}"
+CODEX_TAB_TITLE="${ZAG_COMPUTER_CODEX_TAB_TITLE:-codex}"
+DATABASE_TAB_TITLE="${ZAG_COMPUTER_DATABASE_TAB_TITLE:-database}"
+PSQL_TAB_TITLE="${ZAG_COMPUTER_PSQL_TAB_TITLE:-psql}"
+DEV_SERVER_TAB_TITLE="${ZAG_COMPUTER_DEV_SERVER_TAB_TITLE:-server}"
+ORCHARD_TAB_TITLE="${ZAG_COMPUTER_ORCHARD_TAB_TITLE:-orchard-shell}"
+SOURCE_CONTROL_COMMAND="${ZAG_COMPUTER_SOURCE_CONTROL_COMMAND:-lazygit}"
+CLAUDE_COMMAND="${ZAG_COMPUTER_CLAUDE_COMMAND:-bash -lc '[ -f ~/.zag-computer-env ] && . ~/.zag-computer-env; source /etc/profile.d/zag-agent-aliases.sh; skip'}"
+CODEX_COMMAND="${ZAG_COMPUTER_CODEX_COMMAND:-bash -lc '[ -f ~/.zag-computer-env ] && . ~/.zag-computer-env; source /etc/profile.d/zag-agent-aliases.sh; bypass'}"
+ORCHARD_COMMAND="${ZAG_COMPUTER_ORCHARD_COMMAND:-cd $(shell_quote "$ZAG_REPO_DIR/infra") && make ssh-cp}"
+
+if [ -n "${ZAG_COMPUTER_DATABASE_COMMAND:-}" ]; then
+  DATABASE_COMMAND="$ZAG_COMPUTER_DATABASE_COMMAND"
+else
+  DATABASE_COMMAND="$REMOTE_DATABASE_SCRIPT"
+fi
+
+if [ -n "${ZAG_COMPUTER_PSQL_COMMAND:-}" ]; then
+  PSQL_COMMAND="$ZAG_COMPUTER_PSQL_COMMAND"
+else
+  PSQL_COMMAND="$REMOTE_PSQL_SCRIPT"
+fi
+
+if [ -n "${ZAG_COMPUTER_DEV_SERVER_COMMAND:-}" ]; then
+  DEV_SERVER_COMMAND="$ZAG_COMPUTER_DEV_SERVER_COMMAND"
+else
+  DEV_SERVER_COMMAND="$REMOTE_DEV_SERVER_SCRIPT"
+fi
+
+printf 'Installing zag-computer helper scripts in %s...\n' "$SANDBOX_NAME"
+install_remote_scripts
+cleanup_legacy_tmux_sessions
+
+printf 'Opening cmux workspace for %s...\n' "$SANDBOX_NAME"
+printf 'Landing URL: %s\n' "$LANDING_URL"
+if [ -n "$CONSOLE_URL" ]; then
+  printf 'Console URL: %s\n' "$CONSOLE_URL"
+else
+  printf 'Console URL: not available for port %s\n' "$CONSOLE_PORT"
+fi
+
+if cmux_supports_new_workspace_name; then
+  WORKSPACE_OUTPUT="$(
+    cmux new-workspace \
+      --name "$WORKSPACE_TITLE" \
+      --cwd "$HOME" \
+      --command "$CONNECT_COMMAND"
+  )"
+else
+  WORKSPACE_OUTPUT="$(
+    cmux new-workspace \
+      --cwd "$HOME" \
+      --command "$CONNECT_COMMAND"
+  )"
+fi
+
+WORKSPACE_REF="$(printf "%s\n" "$WORKSPACE_OUTPUT" | parse_workspace_ref)"
+if [ -z "$WORKSPACE_REF" ]; then
+  die "could not parse cmux workspace from output:
+$WORKSPACE_OUTPUT"
+fi
+
+if ! cmux_supports_new_workspace_name; then
+  cmux rename-workspace --workspace "$WORKSPACE_REF" -- "$WORKSPACE_TITLE" >/dev/null
+fi
+
+cmux select-workspace --workspace "$WORKSPACE_REF" >/dev/null
+
+MAIN_PANE="$(get_first_pane "$WORKSPACE_REF")"
+require_ref "main cmux pane in $WORKSPACE_REF" "$MAIN_PANE"
+
+MAIN_SURFACE="$(get_first_pane_surface "$WORKSPACE_REF" "$MAIN_PANE")"
+if [ -z "$MAIN_SURFACE" ]; then
+  MAIN_SURFACE="$(get_first_surface "$WORKSPACE_REF")"
+fi
+require_ref "main cmux surface in $WORKSPACE_REF" "$MAIN_SURFACE"
+
+CLAUDE_SURFACE="$MAIN_SURFACE"
+rename_tab "$WORKSPACE_REF" "$CLAUDE_SURFACE" "$CLAUDE_TAB_TITLE"
+focus_surface "$WORKSPACE_REF" "$CLAUDE_SURFACE"
+
+CODEX_SURFACE="$(create_terminal_surface "$WORKSPACE_REF" "$MAIN_PANE" "$CODEX_TAB_TITLE")"
+connect_surface "$WORKSPACE_REF" "$CODEX_SURFACE"
+
+SHELL_SURFACE="$(create_terminal_surface "$WORKSPACE_REF" "$MAIN_PANE" "$SHELL_TAB_TITLE")"
+connect_surface "$WORKSPACE_REF" "$SHELL_SURFACE"
+
+reorder_after "$CODEX_SURFACE" "$CLAUDE_SURFACE"
+reorder_after "$SHELL_SURFACE" "$CODEX_SURFACE"
+
+focus_surface "$WORKSPACE_REF" "$CLAUDE_SURFACE"
+
+read -r BROWSER_PANE BROWSER_SURFACE < <(create_browser_pane "$WORKSPACE_REF" "right" "$LANDING_TAB_TITLE" "$LANDING_URL")
+
+if [ -n "$BROWSER_PANE" ] && [ -n "$CONSOLE_URL" ]; then
+  CONSOLE_SURFACE="$(create_browser_surface "$WORKSPACE_REF" "$BROWSER_PANE" "$CONSOLE_TAB_TITLE" "$CONSOLE_URL")"
+fi
+
+focus_surface "$WORKSPACE_REF" "$CLAUDE_SURFACE"
+
+read -r BOTTOM_PANE BOTTOM_SURFACE < <(create_terminal_pane "$WORKSPACE_REF" "down")
+
+rename_tab "$WORKSPACE_REF" "$BOTTOM_SURFACE" "$SOURCE_CONTROL_TAB_TITLE"
+connect_surface "$WORKSPACE_REF" "$BOTTOM_SURFACE"
+
+DATABASE_SURFACE="$(create_terminal_surface "$WORKSPACE_REF" "$BOTTOM_PANE" "$DATABASE_TAB_TITLE")"
+connect_surface "$WORKSPACE_REF" "$DATABASE_SURFACE"
+
+PSQL_SURFACE="$(create_terminal_surface "$WORKSPACE_REF" "$BOTTOM_PANE" "$PSQL_TAB_TITLE")"
+connect_surface "$WORKSPACE_REF" "$PSQL_SURFACE"
+
+DEV_SERVER_SURFACE="$(create_terminal_surface "$WORKSPACE_REF" "$BOTTOM_PANE" "$DEV_SERVER_TAB_TITLE")"
+connect_surface "$WORKSPACE_REF" "$DEV_SERVER_SURFACE"
+
+ORCHARD_SURFACE="$(create_terminal_surface "$WORKSPACE_REF" "$BOTTOM_PANE" "$ORCHARD_TAB_TITLE")"
+send_to_surface "$WORKSPACE_REF" "$ORCHARD_SURFACE" "${ORCHARD_COMMAND}"$'\n'
+
+send_when_sandbox_ready "$WORKSPACE_REF" "$CLAUDE_SURFACE" "$(remote_exec_command "$CLAUDE_COMMAND")"$'\n'
+
+send_when_sandbox_ready "$WORKSPACE_REF" "$CODEX_SURFACE" "$(remote_exec_command "$CODEX_COMMAND")"$'\n'
+
+send_when_sandbox_ready "$WORKSPACE_REF" "$SHELL_SURFACE" "$(remote_exec_command "bash -l")"$'\n'
+
+send_when_sandbox_ready "$WORKSPACE_REF" "$BOTTOM_SURFACE" "$(remote_exec_command "$SOURCE_CONTROL_COMMAND")"$'\n'
+
+send_when_sandbox_ready "$WORKSPACE_REF" "$DATABASE_SURFACE" "$(remote_exec_command "$DATABASE_COMMAND")"$'\n'
+
+send_when_sandbox_ready "$WORKSPACE_REF" "$PSQL_SURFACE" "$(remote_exec_command "$PSQL_COMMAND")"$'\n'
+
+send_when_sandbox_ready "$WORKSPACE_REF" "$DEV_SERVER_SURFACE" "$(remote_exec_command "$DEV_SERVER_COMMAND")"$'\n'
+
+focus_surface "$WORKSPACE_REF" "$CLAUDE_SURFACE"
+
+printf 'Opened %s in %s.\n' "$SANDBOX_NAME" "$WORKSPACE_REF"

@@ -28,6 +28,7 @@ import {
   RotateCcw,
   Share2,
   Square,
+  SquareChevronRight,
   Trash2,
   X,
 } from "lucide-react";
@@ -185,6 +186,52 @@ const GitPanel = dynamic(() => import("./git-panel").then((m) => m.GitPanel), {
 });
 
 const emptySubscribe = () => () => {};
+
+type RemoteAccessTool = "cmux";
+
+type RemoteAccessResponse = {
+  sandboxName: string;
+  cmuxCommand: string;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function getApiErrorMessage(body: unknown, fallback: string): string {
+  if (!isRecord(body) || typeof body.error !== "string") {
+    return fallback;
+  }
+
+  return body.error;
+}
+
+function isRemoteAccessResponse(body: unknown): body is RemoteAccessResponse {
+  return (
+    isRecord(body) &&
+    typeof body.sandboxName === "string" &&
+    typeof body.cmuxCommand === "string"
+  );
+}
+
+function ZedIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      aria-hidden="true"
+      className={className}
+      fill="none"
+      viewBox="0 0 32 32"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        clipRule="evenodd"
+        d="M2.93144 1.95429C2.39177 1.95429 1.95429 2.39177 1.95429 2.93144V24.4286H0V2.93144C0 1.31245 1.31245 0 2.93144 0H29.112C30.4178 0 31.0718 1.57879 30.1484 2.50214L14.0237 18.6268H18.5658V16.6115H20.5201V19.1154C20.5201 19.9249 19.8638 20.5811 19.0543 20.5811H12.0694L8.71049 23.9401H23.9401V11.7257H25.8944V23.9401C25.8944 25.0194 25.0194 25.8944 23.9401 25.8944H6.7562L3.33618 29.3144H28.3372C28.8769 29.3144 29.3144 28.8769 29.3144 28.3372V6.84002H31.2687V28.3372C31.2687 29.9562 29.9562 31.2687 28.3372 31.2687H2.15667C0.850848 31.2687 0.196896 29.6899 1.12024 28.7665L17.1839 12.7029H12.7029V14.6572H10.7486V12.2143C10.7486 11.4048 11.4048 10.7486 12.2143 10.7486H19.1382L22.5582 7.32859H7.32859V19.5429H5.3743V7.32859C5.3743 6.24927 6.24927 5.3743 7.32859 5.3743H24.5125L27.9325 1.95429H2.93144Z"
+        fill="currentColor"
+        fillRule="evenodd"
+      />
+    </svg>
+  );
+}
 
 function useHasMounted() {
   return useSyncExternalStore(
@@ -1023,6 +1070,8 @@ export function SessionChatContent({
   const [isCreatingSandbox, setIsCreatingSandbox] = useState(false);
   const [isRestoringSnapshot, setIsRestoringSnapshot] = useState(false);
   const [_isUnarchiving, _setIsUnarchiving] = useState(false);
+  const [remoteAccessTool, setRemoteAccessTool] =
+    useState<RemoteAccessTool | null>(null);
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
   const [closeDialogOpen, setCloseDialogOpen] = useState(false);
   const [repoDialogOpen, setRepoDialogOpen] = useState(false);
@@ -2731,6 +2780,9 @@ export function SessionChatContent({
     isSandboxStartupBusy ||
     codeEditor.state.status === "starting" ||
     codeEditor.state.status === "stopping";
+  const isRemoteAccessLoading =
+    remoteAccessTool !== null || isSandboxStartupBusy;
+  const isCmuxActionDisabled = isArchived || isRemoteAccessLoading;
 
   const handleStartSandboxFromUi = useCallback(async (): Promise<boolean> => {
     if (isArchived) {
@@ -2770,11 +2822,62 @@ export function SessionChatContent({
     }
 
     await codeEditor.handleOpen();
+  }, [canUseCodeEditor, isSandboxActive, handleStartSandboxFromUi, codeEditor]);
+
+  const handleCopyCmuxCommandFromUi = useCallback(async () => {
+    if (isArchived || remoteAccessTool !== null) {
+      return;
+    }
+
+    if (typeof navigator === "undefined" || !navigator.clipboard) {
+      toast.error("Clipboard is unavailable");
+      return;
+    }
+
+    setRemoteAccessTool("cmux");
+
+    try {
+      const sandboxReady = isSandboxActive
+        ? true
+        : await handleStartSandboxFromUi();
+      if (!sandboxReady) {
+        return;
+      }
+
+      const response = await fetch(
+        `/api/sessions/${session.id}/remote-access`,
+        {
+          method: "POST",
+        },
+      );
+      const body: unknown = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(
+          getApiErrorMessage(body, "Failed to prepare cmux command"),
+        );
+      }
+
+      if (!isRemoteAccessResponse(body)) {
+        throw new Error("Invalid remote access response");
+      }
+
+      await navigator.clipboard.writeText(body.cmuxCommand);
+      toast("Copied! Paste in your terminal.");
+    } catch (error) {
+      console.error("Failed to copy cmux command:", error);
+      toast.error(
+        error instanceof Error ? error.message : "Failed to copy cmux command",
+      );
+    } finally {
+      setRemoteAccessTool(null);
+    }
   }, [
-    canUseCodeEditor,
+    isArchived,
+    remoteAccessTool,
     isSandboxActive,
     handleStartSandboxFromUi,
-    codeEditor.handleOpen,
+    session.id,
   ]);
 
   const hasRepo = Boolean(session.cloneUrl);
@@ -3012,6 +3115,51 @@ export function SessionChatContent({
     [archiveSession, router, updateSessionPullRequest],
   );
 
+  const cmuxHeaderAction = (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="hidden sm:inline-flex">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 gap-1.5 px-2 text-xs"
+            onClick={() => void handleCopyCmuxCommandFromUi()}
+            disabled={isCmuxActionDisabled}
+          >
+            {isRemoteAccessLoading ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <SquareChevronRight className="h-3.5 w-3.5" />
+            )}
+            <span>Attach via cmux</span>
+          </Button>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">
+        Copy cmux command for this sandbox
+      </TooltipContent>
+    </Tooltip>
+  );
+
+  const zedHeaderAction = (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="hidden sm:inline-flex">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 gap-1.5 px-2 text-xs"
+            disabled
+          >
+            <ZedIcon className="h-3.5 w-3.5" />
+            Collaborate in Zed
+          </Button>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">Coming soon</TooltipContent>
+    </Tooltip>
+  );
+
   const gitPanelElement = gitPanelOpen ? (
     <GitPanel
       session={session}
@@ -3095,6 +3243,7 @@ export function SessionChatContent({
                     </TooltipContent>
                   </Tooltip>
                 )}
+                {cmuxHeaderAction}
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <span className="hidden sm:inline-flex">
@@ -3125,10 +3274,12 @@ export function SessionChatContent({
                         : `${sandboxStartLabel} and open editor`)}
                   </TooltipContent>
                 </Tooltip>
+                {zedHeaderAction}
               </>
             )}
             {canRunDevServer && (
               <>
+                {cmuxHeaderAction}
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <span className="hidden sm:inline-flex">
@@ -3155,6 +3306,7 @@ export function SessionChatContent({
                     {codeEditorDisabledReason ?? codeEditor.menuLabel}
                   </TooltipContent>
                 </Tooltip>
+                {zedHeaderAction}
                 <div className="hidden h-7 items-center sm:flex">
                   {devServer.state.status === "ready" ? (
                     <div className="flex items-center rounded-md border border-border px-0.5">
@@ -3380,7 +3532,7 @@ export function SessionChatContent({
                                   <p className="text-sm text-muted-foreground">
                                     To work inside the session, open the editor
                                     in your browser. You can also attach from
-                                    your local Mac with cmux or Zed Multiplayer.
+                                    your local Mac with cmux or Zed.
                                   </p>
                                 </div>
                                 <div className="flex flex-wrap items-center justify-center gap-2">
@@ -3402,19 +3554,37 @@ export function SessionChatContent({
                                     size="sm"
                                     variant="outline"
                                     className="cursor-pointer shadow-none"
-                                    onClick={() => toast("Coming soon.")}
+                                    onClick={() =>
+                                      void handleCopyCmuxCommandFromUi()
+                                    }
+                                    disabled={isCmuxActionDisabled}
                                   >
-                                    cmux
+                                    {isRemoteAccessLoading ? (
+                                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                    ) : (
+                                      <SquareChevronRight className="h-3.5 w-3.5" />
+                                    )}
+                                    Attach via cmux
                                   </Button>
-                                  <Button
-                                    type="button"
-                                    size="sm"
-                                    variant="outline"
-                                    className="cursor-pointer shadow-none"
-                                    onClick={() => toast("Coming soon.")}
-                                  >
-                                    Zed Multiplayer
-                                  </Button>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span>
+                                        <Button
+                                          type="button"
+                                          size="sm"
+                                          variant="outline"
+                                          className="shadow-none"
+                                          disabled
+                                        >
+                                          <ZedIcon className="h-3.5 w-3.5" />
+                                          Collaborate in Zed
+                                        </Button>
+                                      </span>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="bottom">
+                                      Coming soon
+                                    </TooltipContent>
+                                  </Tooltip>
                                 </div>
                                 {codeEditorDisabledReason && (
                                   <p className="text-xs text-muted-foreground">
