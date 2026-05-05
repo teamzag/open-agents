@@ -208,13 +208,11 @@ async function getDefaultRemoteRef(
     cwd: workingDirectory,
   });
 
-  const remoteHead = (
-    await runSetupCommandBestEffort(sdk, {
-      cmd: "git",
-      args: ["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"],
-      cwd: workingDirectory,
-    })
-  )
+  const remoteHead = (await runSetupCommandBestEffort(sdk, {
+    cmd: "git",
+    args: ["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"],
+    cwd: workingDirectory,
+  }))
     ? (
         await runSetupCommandOrThrow(
           sdk,

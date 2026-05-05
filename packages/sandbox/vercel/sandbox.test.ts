@@ -513,9 +513,9 @@ describe("VercelSandbox.create", () => {
       cwd: "/vercel/sandbox",
       env: { DOTENV_PRIVATE_KEY: "dotenv-private-key" },
     });
-    expect(
-      runCommandCalls.some((call) => call.args?.includes("clone")),
-    ).toBe(false);
+    expect(runCommandCalls.some((call) => call.args?.includes("clone"))).toBe(
+      false,
+    );
   });
 });
 
