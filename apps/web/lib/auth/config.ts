@@ -69,7 +69,10 @@ const authBaseURLFallback = getAuthBaseURLFallback();
 const authAllowedHosts = getAllowedAuthHosts();
 
 function normalizeUsername(value?: string | null): string | null {
-  const normalized = value?.trim().toLowerCase().replace(/[^a-z0-9_.-]/g, "-");
+  const normalized = value
+    ?.trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_.-]/g, "-");
   return normalized || null;
 }
 
